@@ -99,6 +99,9 @@ export class Renderer {
   private w = 0;
   private h = 0;
   private prevFrame = 0;
+  /** When the next frame is due (ms, rAF clock), for the maxFps cap.
+   *  0 = uninitialized; set on the first capped frame. */
+  private nextFrameDue = 0;
   /** Current frame time in seconds, for animating props/rotors. */
   private frameT = 0;
 
@@ -121,9 +124,25 @@ export class Renderer {
   start(): void {
     void this.fetchTles();
     setInterval(() => void this.fetchTles(), 3600_000);
-    const loop = () => {
-      this.draw();
+    const loop = (now: number) => {
       this.raf = requestAnimationFrame(loop);
+      // Cap to maxFps via an accumulator: advance a running "due" time by whole
+      // frame intervals so the cadence stays anchored to a schedule (even
+      // pacing, no drift) rather than to actual draw timestamps. fps <= 0 means
+      // uncapped — draw on every rAF tick.
+      const fps = this.getConfig().maxFps;
+      if (fps > 0) {
+        const interval = 1000 / fps;
+        if (this.nextFrameDue === 0) this.nextFrameDue = now;
+        if (now < this.nextFrameDue) return; // not due yet — skip this tick
+        this.nextFrameDue += interval;
+        // If we've fallen more than a frame behind (e.g. tab was backgrounded
+        // or a draw stalled), resync to avoid a burst of catch-up frames.
+        if (now - this.nextFrameDue > interval) this.nextFrameDue = now + interval;
+      } else {
+        this.nextFrameDue = 0; // reset so re-enabling the cap starts clean
+      }
+      this.draw();
     };
     this.raf = requestAnimationFrame(loop);
   }
