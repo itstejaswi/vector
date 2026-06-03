@@ -14,8 +14,11 @@
 </p>
 
 <p align="center">
-  <a href="docs/demo.mp4"><img src="docs/demo.gif" alt="Skylight projected on a real ceiling, in action" width="300"></a>
-  <br><em>Running on a real ceiling — <a href="docs/demo.mp4">watch the full clip</a>.</em>
+
+
+https://github.com/user-attachments/assets/9256b0eb-cc27-4388-9a4f-0a6c05468304
+
+
 </p>
 
 Skylight decodes ADS-B from a cheap RTL-SDR radio and renders the planes physically
