@@ -73,8 +73,8 @@ for your location and time. Tune everything from your phone.
 
 | Part | Suggested | Notes |
 |---|---|---|
-| Receiver | **RTL-SDR Blog V4 + dipole** | The included dipole is plenty - planes are nearly overhead. |
-| Compute | **Raspberry Pi 5 (8 GB)** | Decode + render. Active cooling for 24/7. |
+| Receiver | **RTL-SDR Blog V4 + dipole** | The included dipole is plenty - planes are nearly overhead. The **V3 and V5 work identically** (same RTL2832U); if you're buying now, the V4/V5 are the current models. |
+| Compute | **Raspberry Pi 5 (8 GB)** | Decode + render. Active cooling for 24/7. See [minimum specs](#minimum-specs) for lighter setups. |
 | Projector | A 1080p projector pointed up | Laser (e.g. Optoma GT2100HDR) gives the deepest blacks, but it's overkill - see the budget tip below. |
 | Display link | micro-HDMI → HDMI | The Pi 5 uses **micro**-HDMI (not mini). |
 | Mount | Rotating 1/4-20 stand, pointed up | Lower the stand for a bigger image; tape **+ a safety tether**. |
@@ -98,6 +98,22 @@ for your location and time. Tune everything from your phone.
 </p>
 
 You don't need any of this to try it - see Quick start.
+
+### Minimum specs
+
+There are two workloads, and they have very different requirements:
+
+- **Display + decode (the core ceiling piece).** This is light. The server is a small
+  Node process; the rendering is a 2D canvas. A **Pi 4 (2 GB)** runs it comfortably, and a
+  **Pi 3B / Pi Zero 2 W** will work for the display if you keep the canvas modest - cap
+  `maxFps` (e.g. 30), trim `trailSeconds`, and lean on `DATA_SOURCE=api` so the Pi isn't
+  also running `dump1090`. 1 GB is workable but tight; 2 GB+ is the comfortable floor.
+- **The optional sky-camera tracker (vision + neural detector).** This is the heavy part
+  and is what the **Pi 5 (8 GB)** recommendation is for - real-time RTSP decode plus ONNX
+  inference. Don't expect the vision tracker to keep up on a Pi 4 or smaller.
+
+Rule of thumb: **Pi Zero 2 W / 3B** = display only, **Pi 4** = display + local radio,
+**Pi 5** = everything including the camera tracker.
 
 ## Quick start (local, no radio)
 
@@ -152,6 +168,33 @@ It's fully optional - if the model (or `onnxruntime-node`) is absent, the tracke
 classical-only with no errors. On a Pi 5 it adds ~0.8 to load average during a pass;
 turn it off with `tracker.vision.net.enabled = false` or run it less often with
 `tracker.vision.net.everyNTicks` if the Pi runs hot.
+
+## Docker (server-driven projector)
+
+If you'd rather drive a projector from a server (no Pi, no cabling to the projector),
+run the server + display in a container:
+
+```bash
+docker compose up -d --build
+# display:  http://<host>:3000/      ·  phone panel: http://<host>:3000/control
+```
+
+Out of the box it uses the free **airplanes.live** API, so it runs with **no radio**.
+To use your own ADS-B receiver, set `DATA_SOURCE=radio` and point `AIRCRAFT_JSON_URL`
+at an existing dump1090 / readsb / PiAware feed on your network (or just change the URL
+live from the control panel's **Source** section):
+
+```yaml
+# compose.yaml
+environment:
+  DATA_SOURCE: radio
+  AIRCRAFT_JSON_URL: http://192.168.1.50:8080/data/aircraft.json
+```
+
+Config and the route/TLE caches persist in the `skylight-data` volume. The image is the
+**server + display only** - the optional sky-camera tracker (which wants direct camera +
+GPU access) is not containerized. If you reach the server over a custom hostname or a
+tunnel rather than a LAN IP / `*.local`, add it to `ALLOWED_HOSTS` (see below).
 
 ## Configuration
 
