@@ -52,7 +52,15 @@ for your location and time. Tune everything from your phone.
   jump straight to the next ISS pass.
 - **Phone control panel** — every setting (rotation, theme, palette, filters, sky
   toggles, …) is live-tunable over your LAN and persists across reboots.
-- **Appliance-ready** — boots straight to a full-screen kiosk on a Raspberry Pi 5.
+- **Optional sky camera** — point a PTZ camera (VISCA-over-IP + RTSP) at the sky and
+  Skylight **automatically films the planes it's projecting**: ADS-B-driven pointing
+  with latency-compensated lead prediction, an on-frame vision detector that locks the
+  plane to center, and a confidence-gated zoom ladder that punches in as the lock
+  holds. Includes a **TV dashboard** (`/tv.html`) with the live feed + radar inset, and
+  a full **debug UI** (`/tracker.html`) with jog pad, target table, and a star-capture
+  calibration wizard.
+- **Appliance-ready** — boots straight to a full-screen kiosk on a Raspberry Pi 5
+  (dual-output: projector + TV dashboard).
 
 ## Hardware
 
@@ -63,6 +71,7 @@ for your location and time. Tune everything from your phone.
 | Projector | A 1080p projector pointed up | Laser (e.g. Optoma GT2100HDR) gives the deepest blacks, but it's overkill — see the budget tip below. |
 | Display link | micro-HDMI → HDMI | The Pi 5 uses **micro**-HDMI (not mini). |
 | Mount | Rotating 1/4-20 stand, pointed up | Lower the stand for a bigger image; tape **+ a safety tether**. |
+| Sky camera *(optional)* | Any **VISCA-over-IP PTZ** with RTSP (e.g. a 4K NDI conference PTZ) | For the auto-filming tracker. **Clamp the base rigidly** — fast slews will walk an unclamped mount and ruin the aim calibration. |
 
 > **💡 Budget tip — you don't need an expensive projector.** The pricey laser short-throw
 > is only worth it if you want the image visible in a **lit** room. If you're happy viewing
@@ -94,6 +103,10 @@ DATA_SOURCE=api pnpm dev
 
 - **Display:** http://localhost:5173/
 - **Control panel:** http://localhost:5173/control.html (or from your phone: `http://<your-ip>:5173/control.html`)
+- **Camera tracker debug UI:** http://localhost:5173/tracker.html — runs against a
+  built-in **camera simulator**, so the whole pointing pipeline (target selection,
+  prediction, zoom, calibration) works with zero hardware.
+- **TV dashboard:** http://localhost:5173/tv.html
 
 Set your location in the control panel area is coming; for now set `centerLat` /
 `centerLon` in [`shared/src/config.ts`](shared/src/config.ts) (defaults to SFO).
@@ -131,6 +144,7 @@ fields:
 | `showStars` / `showSun` / `showMoon` / `showSatellites` | Sky layer toggles. |
 | `skyTimeOffsetMin` | Scrub the sky clock for testing (0 = live). |
 | `showDestArc` / `showRouteDetail` | "Window to elsewhere". |
+| `tracker.*` | The whole camera subsystem — driver (`sim`/`visca`), camera IP, mount calibration, target selection criteria, prediction/pursuit tuning, zoom + vision behavior. All live-tunable from the tracker debug UI. |
 
 **Using it somewhere other than SFO:** set `centerLat`/`centerLon`, and replace the
 runway geometry in [`web/src/display/airports.ts`](web/src/display/airports.ts) with your
@@ -152,22 +166,36 @@ sun, moon, and satellites are computed for your coordinates automatically.
 RTL-SDR ──USB──> dump1090-fa ──> aircraft.json (:8080)
                                       │ poll ~1 Hz  (+ API supplement)
                                       ▼
-                         server/  (Node · Express · ws)
+                         server/  (Node · Express · ws)  :3000
                          • normalize + enrich (airline/type tables + adsbdb routes)
                          • proxy satellite TLEs (Celestrak)
                          • persist config, broadcast over WebSocket
-                         ├──────────────────────┬───────────────────────┐
-                         ▼                      ▼                       ▼
-                   Display (/)            Control (/control)        REST /api/*
-                   canvas renderer +      phone settings UI
-                   sky engine → projector (live, two-way)
+                         ├──────────────┬──────────────┬───────────────┐
+                         ▼              ▼              ▼               ▼
+                   Display (/)    Control (/control)  REST /api/*   tracker/  :3001
+                   canvas renderer +  phone settings UI             • target selection + az/el
+                   sky engine → projector (live, two-way)             lead prediction (ECEF)
+                                                                    • velocity pursuit + zoom
+                                                                    • vision: sky-masked blob
+                                                                      detector, lag-compensated
+                                                                    • VISCA-over-IP → PTZ camera
+                                                                    • RTSP → H.264 passthrough
+                                                                      (/video-ws) + MJPEG
+                                                                    • TV dashboard + debug UI
 ```
 
-- **`shared/`** — TypeScript types, config schema, and pure geo/projection math.
+- **`shared/`** — TypeScript types, config schema, and pure geo/projection/pointing math
+  (ECEF az/el, mount model + calibration solver, alpha-beta trackers, FOV/zoom).
 - **`server/`** — polls the radio (primary) and API (supplement), enriches aircraft,
   proxies TLEs, persists config, and pushes everything over a WebSocket.
-- **`web/`** — Vite + React, two pages: the **display** (`<canvas>` renderer + celestial
-  engine) and the mobile **control panel**.
+- **`web/`** — Vite + React, four pages: the **display** (`<canvas>` renderer + celestial
+  engine), the mobile **control panel**, the **TV dashboard**, and the **tracker debug UI**.
+- **`tracker/`** — the camera brain: picks a target, predicts where it will be when the
+  command actually bites (fix age + decode latency + motor latency), drives the PTZ with
+  closed-loop velocity pursuit (sigma-delta speed dithering, soft limit guards,
+  dead-reckoned pose), verifies the plane on-frame with a vision detector, and zooms in
+  only while the lock holds. Runs against a **simulator** with zero hardware; replays
+  recorded sessions deterministically for debugging.
 
 **Stack:** TypeScript · React · Vite · Express · ws · pnpm workspaces ·
 [astronomy-engine](https://github.com/cosinekitty/astronomy) ·
