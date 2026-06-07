@@ -7,6 +7,12 @@
 // removes the once-per-second "snap" you get from naive dead-reckoning. The small
 // added latency is irrelevant for an ambient ceiling piece.
 //
+// Sky projection (projectionMode = "sky"): each fix is converted from ground
+// position + altitude to azimuth/elevation on a look-up hemisphere (zenith =
+// center, horizon = edge). Interpolation happens in ground space, then the
+// trig mapping runs every frame so apparent angular speed matches lying outside
+// and watching the real sky — fast overhead, slow at the horizon.
+//
 // Visual language: pure black, luminous altitude-graded glyphs, comet trails that
 // taper and fade, and restrained typography that fades in only for the nearest few.
 
@@ -18,11 +24,19 @@ import {
   rangeMeters,
   metersToMiles,
   formatSpeed,
+  horizonRadiusM,
+  groundToSkyAngles,
+  projectAircraft,
+  projectSkyPoint,
+  skyGlyphScale,
+  lerpAzimuth,
   EMERGENCY_SQUAWKS,
   type Aircraft,
   type Config,
+  type GroundSample,
   type Meters,
   type Point,
+  type SkyAngles,
 } from "@shared/index.js";
 import { AIRPORTS } from "./airports.js";
 import { classifyGlyph, drawAircraftGlyph, GLYPH_SCALE } from "./aircraftGlyph.js";
@@ -35,6 +49,7 @@ const RENDER_DELAY_MS = 1150;
 interface Sample {
   t: number; // performance.now() at arrival
   m: Meters;
+  altFt: number;
   track?: number;
   gs?: number;
 }
@@ -83,13 +98,15 @@ const rgba = (c: [number, number, number], a: number) =>
 
 interface Visible {
   tr: Track;
-  m: Meters;
+  sample: GroundSample;
+  sky: SkyAngles | null;
   p: Point;
   heading: number;
   rangeMi: number;
   alpha: number;
   color: [number, number, number];
   emergency: boolean;
+  sizeScale: number;
 }
 
 export class Renderer {
@@ -179,6 +196,7 @@ export class Renderer {
       const m = hasPos
         ? llToMeters(ac.lat!, ac.lon!, cfg.centerLat, cfg.centerLon)
         : { east: 0, north: 0 };
+      const altFt = ac.altBaro ?? ac.altGeom ?? 0;
       let tr = this.tracks.get(ac.hex);
       if (!tr) {
         tr = { ac, history: [], firstSeen: now, lastSeen: now, hasPos, life: 0 };
@@ -190,8 +208,13 @@ export class Renderer {
       if (hasPos) {
         const last = tr.history[tr.history.length - 1];
         // Dedup identical fixes (source sometimes repeats a position).
-        if (!last || last.m.east !== m.east || last.m.north !== m.north) {
-          tr.history.push({ t: now, m, track: ac.track, gs: ac.gs });
+        if (
+          !last ||
+          last.m.east !== m.east ||
+          last.m.north !== m.north ||
+          last.altFt !== altFt
+        ) {
+          tr.history.push({ t: now, m, altFt, track: ac.track, gs: ac.gs });
         }
       }
     }
@@ -207,30 +230,60 @@ export class Renderer {
     return true;
   }
 
-  /** Interpolate a track's position at render time `tt` (perf clock). */
-  private sampleAt(tr: Track, tt: number, cfg: Config): Meters | null {
+  /** Interpolate a track's ground fix (+ altitude) at render time `tt`. */
+  private sampleAt(tr: Track, tt: number, cfg: Config): GroundSample | null {
     const h = tr.history;
     if (h.length === 0) return null;
-    if (tt <= h[0].t) return h[0].m;
+    if (tt <= h[0].t) return { m: h[0].m, altFt: h[0].altFt };
     const lastS = h[h.length - 1];
     if (tt >= lastS.t) {
-      // Beyond newest fix — extrapolate gently, capped.
       const dt = Math.min((tt - lastS.t) / 1000, cfg.maxExtrapolationSec);
-      return cfg.interpolate ? deadReckon(lastS.m, lastS.track, lastS.gs, dt) : lastS.m;
+      const m = cfg.interpolate
+        ? deadReckon(lastS.m, lastS.track, lastS.gs, dt)
+        : lastS.m;
+      const vr = tr.ac.baroRate ?? 0;
+      const altFt = lastS.altFt + (vr / 60) * dt;
+      return { m, altFt };
     }
-    // Find the bracketing pair.
     for (let i = h.length - 1; i > 0; i--) {
       if (h[i - 1].t <= tt && tt <= h[i].t) {
         const a = h[i - 1];
         const b = h[i];
         const f = (tt - a.t) / Math.max(1, b.t - a.t);
         return {
-          east: a.m.east + (b.m.east - a.m.east) * f,
-          north: a.m.north + (b.m.north - a.m.north) * f,
+          m: {
+            east: a.m.east + (b.m.east - a.m.east) * f,
+            north: a.m.north + (b.m.north - a.m.north) * f,
+          },
+          altFt: a.altFt + (b.altFt - a.altFt) * f,
         };
       }
     }
-    return lastS.m;
+    return { m: lastS.m, altFt: lastS.altFt };
+  }
+
+  private horizonM(cfg: Config): number {
+    return horizonRadiusM(cfg.radiusMiles);
+  }
+
+  /** Azimuth fallback when an aircraft is directly overhead (zenith singularity). */
+  private fallbackAz(tr: Track): number | undefined {
+    return tr.ac.track ?? tr.history[tr.history.length - 1]?.track;
+  }
+
+  private toPoint(
+    sample: GroundSample,
+    cfg: Config,
+    proj: ProjOpts,
+    tr?: Track,
+  ): Point {
+    return projectAircraft(
+      sample,
+      cfg.projectionMode,
+      proj,
+      this.horizonM(cfg),
+      tr ? this.fallbackAz(tr) : undefined,
+    );
   }
 
   private draw(): void {
@@ -281,21 +334,30 @@ export class Renderer {
       tr.life += (target - tr.life) * Math.min(1, frameDt * 3.5);
 
       if (!tr.hasPos) continue;
-      const m = this.sampleAt(tr, tt, cfg);
-      if (!m) continue;
+      const sample = this.sampleAt(tr, tt, cfg);
+      if (!sample) continue;
 
-      const rangeMi = metersToMiles(rangeMeters(m));
+      const rangeMi = metersToMiles(rangeMeters(sample.m));
       if (rangeMi > cfg.radiusMiles * 1.08) continue;
 
-      const p = project(m, proj);
-      const heading = this.screenHeading(tr, tt, proj);
-      const edgeFade = clamp01((cfg.radiusMiles - rangeMi) / (cfg.radiusMiles * 0.14));
+      const sky =
+        cfg.projectionMode === "sky"
+          ? groundToSkyAngles(sample.m, sample.altFt, this.fallbackAz(tr))
+          : null;
+      const p = this.toPoint(sample, cfg, proj, tr);
+      const heading = this.screenHeading(tr, tt, cfg, proj);
+      const edgeFade =
+        cfg.projectionMode === "sky" && sky
+          ? clamp01(sky.elev / 6) * clamp01((cfg.radiusMiles - rangeMi) / (cfg.radiusMiles * 0.14))
+          : clamp01((cfg.radiusMiles - rangeMi) / (cfg.radiusMiles * 0.14));
       const alpha = clamp01(edgeFade) * tr.life * cfg.brightness;
-      const alt = tr.ac.altBaro ?? tr.ac.altGeom ?? 0;
+      const alt = sample.altFt;
       const color = cfg.altitudeColor ? altRamp(alt) : hexToRgb(cfg.palette.glyph);
       const emergency = cfg.highlightEmergency && !!tr.ac.squawk && EMERGENCY_SQUAWKS.has(tr.ac.squawk);
+      const sizeScale =
+        cfg.projectionMode === "sky" && sky ? skyGlyphScale(sky.slantM) : 1;
 
-      visible.push({ tr, m, p, heading, rangeMi, alpha, color, emergency });
+      visible.push({ tr, sample, sky, p, heading, rangeMi, alpha, color, emergency, sizeScale });
     }
 
     // Nearest last so it paints on top.
@@ -331,22 +393,21 @@ export class Renderer {
     ctx.restore();
   }
 
-  private screenHeading(tr: Track, tt: number, proj: ProjOpts): number {
-    const a = this.sampleAt(tr, tt - 400, this.getConfig());
-    const b = this.sampleAt(tr, tt + 400, this.getConfig());
+  private screenHeading(tr: Track, tt: number, cfg: Config, proj: ProjOpts): number {
+    const a = this.sampleAt(tr, tt - 400, cfg);
+    const b = this.sampleAt(tr, tt + 400, cfg);
     if (a && b) {
-      const pa = project(a, proj);
-      const pb = project(b, proj);
+      const pa = this.toPoint(a, cfg, proj, tr);
+      const pb = this.toPoint(b, cfg, proj, tr);
       if (Math.hypot(pb.x - pa.x, pb.y - pa.y) > 0.5) {
         return Math.atan2(pb.y - pa.y, pb.x - pa.x);
       }
     }
-    // Fallback: use reported track through the projection.
-    const m = this.sampleAt(tr, tt, this.getConfig());
-    if (m && tr.ac.track != null) {
-      const ahead = deadReckon(m, tr.ac.track, 120, 1);
-      const p0 = project(m, proj);
-      const p1 = project(ahead, proj);
+    const mid = this.sampleAt(tr, tt, cfg);
+    if (mid && tr.ac.track != null) {
+      const ahead = deadReckon(mid.m, tr.ac.track, 120, 1);
+      const p0 = this.toPoint(mid, cfg, proj, tr);
+      const p1 = this.toPoint({ m: ahead, altFt: mid.altFt }, cfg, proj, tr);
       return Math.atan2(p1.y - p0.y, p1.x - p0.x);
     }
     return 0;
@@ -357,20 +418,44 @@ export class Renderer {
     const ctx = this.ctx;
     const cx = this.w / 2;
     const cy = this.h / 2;
+    const hM = this.horizonM(cfg);
+    const skyMode = cfg.projectionMode === "sky";
 
     if (cfg.rangeRings) {
       ctx.save();
-      for (let mi = 1; mi <= Math.floor(cfg.radiusMiles); mi++) {
-        const r = mi * 1609.34 * proj.pxPerM;
-        ctx.beginPath();
-        ctx.arc(cx, cy, r, 0, Math.PI * 2);
-        ctx.strokeStyle = rgba(hexToRgb(cfg.palette.grid), 0.5 * cfg.brightness);
-        ctx.lineWidth = 1;
-        ctx.setLineDash([2, 7]);
-        ctx.stroke();
+      if (skyMode) {
+        // Elevation contours on the look-up dome (15° … 75° above horizon).
+        for (const elev of [15, 30, 45, 60, 75]) {
+          const r = (1 - elev / 90) * hM * proj.pxPerM;
+          ctx.beginPath();
+          ctx.arc(cx, cy, r, 0, Math.PI * 2);
+          ctx.strokeStyle = rgba(hexToRgb(cfg.palette.grid), (0.22 + elev / 300) * cfg.brightness);
+          ctx.lineWidth = 1;
+          ctx.setLineDash(elev === 45 ? [] : [2, 8]);
+          ctx.stroke();
+        }
+        ctx.setLineDash([]);
+        ctx.font = `300 9px ${cfg.fonts.mono}`;
+        ctx.fillStyle = rgba(hexToRgb(cfg.palette.text), 0.22 * cfg.brightness);
+        ctx.textAlign = "left";
+        ctx.textBaseline = "middle";
+        for (const elev of [30, 60]) {
+          const r = (1 - elev / 90) * hM * proj.pxPerM;
+          ctx.fillText(`${elev}°`, cx + r + 4, cy);
+        }
+      } else {
+        for (let mi = 1; mi <= Math.floor(cfg.radiusMiles); mi++) {
+          const r = mi * 1609.34 * proj.pxPerM;
+          ctx.beginPath();
+          ctx.arc(cx, cy, r, 0, Math.PI * 2);
+          ctx.strokeStyle = rgba(hexToRgb(cfg.palette.grid), 0.5 * cfg.brightness);
+          ctx.lineWidth = 1;
+          ctx.setLineDash([2, 7]);
+          ctx.stroke();
+        }
+        ctx.setLineDash([]);
       }
-      ctx.setLineDash([]);
-      // Center mark.
+      // Zenith mark.
       ctx.beginPath();
       ctx.arc(cx, cy, 2, 0, Math.PI * 2);
       ctx.fillStyle = rgba(hexToRgb(cfg.palette.grid), 0.7 * cfg.brightness);
@@ -380,7 +465,6 @@ export class Renderer {
 
     if (cfg.compass) {
       ctx.save();
-      const R = (Math.min(this.w, this.h) / 2) * 0.965;
       ctx.font = `300 12px ${cfg.fonts.label}`;
       ctx.fillStyle = rgba(hexToRgb(cfg.palette.text), 0.32 * cfg.brightness);
       ctx.textAlign = "center";
@@ -391,11 +475,15 @@ export class Renderer {
         /* older browsers */
       }
       for (const [label, deg] of [["N", 0], ["E", 90], ["S", 180], ["W", 270]] as [string, number][]) {
-        const dir: Meters = {
-          east: Math.sin((deg * Math.PI) / 180) * 1e6,
-          north: Math.cos((deg * Math.PI) / 180) * 1e6,
-        };
-        const p = project(dir, { ...proj, pxPerM: R / 1e6 });
+        const p = skyMode
+          ? projectSkyPoint(deg, 1.5, proj, hM)
+          : project(
+              {
+                east: Math.sin((deg * Math.PI) / 180) * 1e6,
+                north: Math.cos((deg * Math.PI) / 180) * 1e6,
+              },
+              { ...proj, pxPerM: (Math.min(this.w, this.h) / 2) * 0.965 / 1e6 },
+            );
         this.withLabelRotation(cfg, p.x, p.y, () => ctx.fillText(label, p.x, p.y));
       }
       try {
@@ -469,8 +557,12 @@ export class Renderer {
     }
   }
 
-  private toScreen(ll: [number, number], cfg: Config, proj: ProjOpts): Point {
-    return project(llToMeters(ll[0], ll[1], cfg.centerLat, cfg.centerLon), proj);
+  private toScreen(ll: [number, number], cfg: Config, proj: ProjOpts, altFt = 0): Point {
+    const sample: GroundSample = {
+      m: llToMeters(ll[0], ll[1], cfg.centerLat, cfg.centerLon),
+      altFt,
+    };
+    return this.toPoint(sample, cfg, proj);
   }
 
   // --- sky layer (sun / moon / stars / satellites) ---
@@ -496,10 +588,7 @@ export class Renderer {
 
   /** Place an (azimuth, altitude) sky point on the field. Zenith=center, horizon=edge. */
   private projectSky(az: number, alt: number, cfg: Config, proj: ProjOpts): Point {
-    const R = cfg.radiusMiles * 1609.34;
-    const r = (1 - Math.max(0, alt) / 90) * R;
-    const a = (az * Math.PI) / 180;
-    return project({ east: Math.sin(a) * r, north: Math.cos(a) * r }, proj);
+    return projectSkyPoint(az, alt, proj, this.horizonM(cfg));
   }
 
   private drawSky(cfg: Config, proj: ProjOpts): void {
@@ -650,35 +739,56 @@ export class Renderer {
     });
   }
 
-  // --- window to elsewhere: faint great-circle arc toward destination ---
+  // --- window to elsewhere: faint arc toward destination ---
   private drawDestArc(cfg: Config, proj: ProjOpts, v: Visible): void {
     const ac = v.tr.ac;
     if (ac.lat == null || ac.lon == null || ac.destLat == null || ac.destLon == null) return;
     if (!routePlausible(ac, cfg)) return;
-    const brg = bearing(ac.lat, ac.lon, ac.destLat, ac.destLon) * (Math.PI / 180);
-    const stepM = cfg.radiusMiles * 1609.34 * 0.5;
-    const ahead = project(
-      { east: v.m.east + Math.sin(brg) * stepM, north: v.m.north + Math.cos(brg) * stepM },
-      proj,
-    );
-    const dx = ahead.x - v.p.x;
-    const dy = ahead.y - v.p.y;
-    const len = Math.hypot(dx, dy) || 1;
-    const L = Math.min(this.w, this.h) * 0.24;
-    const ex = v.p.x + (dx / len) * L;
-    const ey = v.p.y + (dy / len) * L;
+
     const ctx = this.ctx;
+    const destAz = bearing(ac.lat, ac.lon, ac.destLat, ac.destLon);
+    const pts: Point[] = [v.p];
+
+    if (cfg.projectionMode === "sky" && v.sky) {
+      // Curve along the dome from the aircraft's sky position toward the
+      // destination azimuth at the horizon — a realistic look-up great-circle hint.
+      const steps = 10;
+      for (let i = 1; i <= steps; i++) {
+        const f = i / steps;
+        const az = lerpAzimuth(v.sky.az, destAz, f);
+        const elev = v.sky.elev * (1 - f * f);
+        pts.push(this.projectSky(az, elev, cfg, proj));
+      }
+    } else {
+      const brg = destAz * (Math.PI / 180);
+      const stepM = this.horizonM(cfg) * 0.5;
+      const ahead = project(
+        {
+          east: v.sample.m.east + Math.sin(brg) * stepM,
+          north: v.sample.m.north + Math.cos(brg) * stepM,
+        },
+        proj,
+      );
+      const dx = ahead.x - v.p.x;
+      const dy = ahead.y - v.p.y;
+      const len = Math.hypot(dx, dy) || 1;
+      const L = Math.min(this.w, this.h) * 0.24;
+      pts.push({ x: v.p.x + (dx / len) * L, y: v.p.y + (dy / len) * L });
+    }
+
     ctx.save();
-    const grad = ctx.createLinearGradient(v.p.x, v.p.y, ex, ey);
-    grad.addColorStop(0, rgba(v.color, 0.32 * v.alpha));
-    grad.addColorStop(1, rgba(v.color, 0));
-    ctx.strokeStyle = grad;
-    ctx.lineWidth = 1.3;
-    ctx.setLineDash([2, 5]);
-    ctx.beginPath();
-    ctx.moveTo(v.p.x, v.p.y);
-    ctx.lineTo(ex, ey);
-    ctx.stroke();
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    for (let i = 1; i < pts.length; i++) {
+      const f = i / (pts.length - 1);
+      ctx.strokeStyle = rgba(v.color, (0.34 - f * 0.28) * v.alpha);
+      ctx.lineWidth = 1.4 - f * 0.5;
+      ctx.setLineDash(f > 0.6 ? [2, 5] : []);
+      ctx.beginPath();
+      ctx.moveTo(pts[i - 1].x, pts[i - 1].y);
+      ctx.lineTo(pts[i].x, pts[i].y);
+      ctx.stroke();
+    }
     ctx.restore();
   }
 
@@ -694,7 +804,11 @@ export class Renderer {
     const pts: { p: Point; age: number }[] = [];
     for (const s of h) {
       if (s.t < tt - windowMs || s.t > tt) continue;
-      pts.push({ p: project(s.m, proj), age: (tt - s.t) / windowMs });
+      const sample: GroundSample = { m: s.m, altFt: s.altFt };
+      pts.push({
+        p: this.toPoint(sample, cfg, proj, v.tr),
+        age: (tt - s.t) / windowMs,
+      });
     }
     pts.push({ p: v.p, age: 0 });
     if (pts.length < 2) return;
@@ -721,7 +835,7 @@ export class Renderer {
     const ctx = this.ctx;
     const color = v.emergency ? hexToRgb(cfg.palette.warn) : v.color;
     const kind = classifyGlyph(v.tr.ac);
-    const s = cfg.glyphSizePx * GLYPH_SCALE[kind];
+    const s = cfg.glyphSizePx * GLYPH_SCALE[kind] * v.sizeScale;
 
     ctx.save();
     ctx.translate(v.p.x, v.p.y);

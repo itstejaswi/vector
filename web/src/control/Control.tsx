@@ -106,6 +106,16 @@ export function Control() {
             <Slider value={cfg.radiusMiles} min={0.5} max={10} step={0.5} unit="mi"
               onChange={(v) => set({ radiusMiles: v })} />
           </Row>
+          <Row label="Projection" hint="sky = realistic look-up motion">
+            <Segmented
+              value={cfg.projectionMode}
+              options={[
+                { value: "sky", label: "Sky" },
+                { value: "map", label: "Map" },
+              ]}
+              onChange={(v) => set({ projectionMode: v })}
+            />
+          </Row>
         </Section>
 
         <Section title="View">
