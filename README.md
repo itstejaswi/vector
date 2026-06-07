@@ -204,7 +204,8 @@ fields:
 
 | | |
 |---|---|
-| `centerLat` / `centerLon` | **Your location** - where you're looking up. |
+| `centerLat` / `centerLon` | **Your location** - where you're looking up. Editable from the panel's **Location** section (type a city, airport code, or `lat,lon`). |
+| `locationName` | Display name for the current location, shown in the control panel. |
 | `radiusMiles` | How far out to show (default 3 - "what you could realistically see"). |
 | `rotationDeg` / `mirrorX` | Calibration for the looking-up flip (tune against a real pass). |
 | `theme` | `ambient` · `telemetry` · `focus`. |
@@ -213,10 +214,16 @@ fields:
 | `showDestArc` / `showRouteDetail` | "Window to elsewhere". |
 | `tracker.*` | The whole camera subsystem - driver (`sim`/`visca`), camera IP, mount calibration, target selection criteria, prediction/pursuit tuning, zoom + vision behavior. All live-tunable from the tracker debug UI. |
 
-**Using it somewhere other than SFO:** set `centerLat`/`centerLon`, and replace the
-runway geometry in [`web/src/display/airports.ts`](web/src/display/airports.ts) with your
-local airport (coordinates from [OurAirports](https://ourairports.com/data/)). Stars,
-sun, moon, and satellites are computed for your coordinates automatically.
+**Using it somewhere other than SFO:** set your location from the control panel's
+**Location** section (or edit `centerLat`/`centerLon`). Stars, sun, moon, and satellites
+are computed for your coordinates automatically. The runway overlay is still SFO-specific
+geometry - turn off **Airport runways** if you've moved, or replace it in
+[`web/src/display/airports.ts`](web/src/display/airports.ts) with your local airport
+(coordinates from [OurAirports](https://ourairports.com/data/)).
+
+> Location search uses the free [Nominatim](https://nominatim.openstreetmap.org/)
+> (OpenStreetMap) service. Set `GEOCODE_USER_AGENT` to identify your deployment if you
+> use it heavily.
 
 ### Server environment
 
@@ -228,6 +235,7 @@ sun, moon, and satellites are computed for your coordinates automatically.
 | `PORT` / `HOST` | `3000` / `0.0.0.0` | HTTP + WebSocket |
 | `ALLOWED_HOSTS` | *(empty)* | Extra Host/Origin allowlist entries, comma-separated. Wildcards: `*.example.com`. Loopback, RFC1918 LAN, IPv6 ULA / link-local, and `*.local` are allowed by default. |
 | `ALLOW_PRIVATE_LAN` | `1` | Set `0` to lock the server to loopback + mDNS only (no LAN phone control) |
+| `GEOCODE_USER_AGENT` | *(skylight default)* | User-Agent sent to Nominatim for location search |
 
 ### Exposing Skylight on a custom hostname
 

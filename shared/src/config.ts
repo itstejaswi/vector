@@ -208,6 +208,8 @@ export interface Config {
   // --- location & scope ---
   centerLat: number;
   centerLon: number;
+  /** Human-readable place name for the current location (shown in the panel). */
+  locationName: string;
   radiusMiles: number;
 
   // --- data source ---
@@ -299,6 +301,7 @@ export const DEFAULT_CONFIG: Config = {
   // location — ideally where you'll be looking up at the ceiling.
   centerLat: 37.6213,
   centerLon: -122.379,
+  locationName: "San Francisco International",
   radiusMiles: 3,
 
   radioUrl: "http://localhost:8080/data/aircraft.json",

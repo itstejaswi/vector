@@ -16,6 +16,12 @@ function fmtIn(ms: number): string {
   return `${Math.floor(m / 60)}h ${m % 60}m`;
 }
 
+function fmtLatLon(lat: number, lon: number): string {
+  const ns = lat >= 0 ? "N" : "S";
+  const ew = lon >= 0 ? "E" : "W";
+  return `${Math.abs(lat).toFixed(4)}° ${ns}, ${Math.abs(lon).toFixed(4)}° ${ew}`;
+}
+
 const FIELD_LABELS: Record<keyof ShowFields, string> = {
   airline: "Airline",
   flight: "Flight",
@@ -30,6 +36,10 @@ const FIELD_LABELS: Record<keyof ShowFields, string> = {
 export function Control() {
   const { state, conn } = useStream("control");
   const cfg = state.config;
+
+  // Location editor (Nominatim via the server's /api/geocode).
+  const [geoBusy, setGeoBusy] = useState(false);
+  const [geoErr, setGeoErr] = useState<string | null>(null);
 
   // ISS pass finder (for the Sky section).
   const [tles, setTles] = useState<Tle[]>([]);
@@ -62,6 +72,25 @@ export function Control() {
     conn.patchConfig({ showFields: { ...cfg.showFields, [k]: v } });
   const statusMessage = state.status?.message ? ` · ${state.status.message}` : "";
 
+  const changeLocation = async (q: string) => {
+    if (!q.trim()) return;
+    setGeoBusy(true);
+    setGeoErr(null);
+    try {
+      const r = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`);
+      if (!r.ok) {
+        setGeoErr(r.status === 404 ? `No match for “${q}”` : "Lookup failed");
+        return;
+      }
+      const hit = (await r.json()) as { lat: number; lon: number; name: string };
+      set({ centerLat: hit.lat, centerLon: hit.lon, locationName: hit.name });
+    } catch {
+      setGeoErr("Lookup failed");
+    } finally {
+      setGeoBusy(false);
+    }
+  };
+
   return (
     <div className="control">
       <header className="topbar">
@@ -75,6 +104,20 @@ export function Control() {
       </header>
 
       <main>
+        <Section title="Location">
+          <Row label={cfg.locationName || "Location"} hint={fmtLatLon(cfg.centerLat, cfg.centerLon)}>
+            <TextInput
+              key={cfg.locationName}
+              value=""
+              placeholder="city, airport, or lat,lon"
+              ariaLabel="Change location"
+              onCommit={changeLocation}
+            />
+          </Row>
+          {geoBusy && <Row label="" hint="resolving…"><span /></Row>}
+          {geoErr && <Row label="" hint={geoErr}><span /></Row>}
+        </Section>
+
         <Section title="Source">
           <Row label="Radio URL" hint="dump1090 aircraft.json">
             <TextInput
@@ -224,7 +267,7 @@ export function Control() {
           <Row label="Compass">
             <Toggle value={cfg.compass} onChange={(v) => set({ compass: v })} />
           </Row>
-          <Row label="Airport runways">
+          <Row label="Airport runways" hint="SFO geometry; off if you've moved">
             <Toggle value={cfg.showAirport} onChange={(v) => set({ showAirport: v })} />
           </Row>
           <Row label="Highlight emergency">

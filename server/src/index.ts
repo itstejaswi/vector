@@ -13,6 +13,7 @@ import { RouteEnricher } from "./enrich/routes.js";
 import { Poller } from "./datasource.js";
 import { Hub } from "./hub.js";
 import { TleStore } from "./tle.js";
+import { resolveLocation } from "./geocode.js";
 import { buildHostMatcher, originHostname } from "./allowed-hosts.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -31,6 +32,10 @@ const ROUTE_CACHE_HOURS = Number(process.env.ROUTE_CACHE_HOURS ?? 12);
 // When on radio, also poll the API and merge (keeps landing aircraft alive).
 const SUPPLEMENT_API = (process.env.SUPPLEMENT_API ?? "1") !== "0";
 const API_POLL_MS = Number(process.env.API_POLL_MS ?? 4000);
+// Nominatim asks for a descriptive User-Agent identifying the application.
+const GEOCODE_UA =
+  process.env.GEOCODE_USER_AGENT ??
+  "skylight/0.1 (https://github.com/cpaczek/skylight)";
 const CONFIG_PATH = resolve(DATA_DIR, "config.json");
 const SERVER_DEFAULT_CONFIG: Config = { ...DEFAULT_CONFIG, radioUrl: RADIO_URL };
 
@@ -136,6 +141,20 @@ async function main(): Promise<void> {
     }
     poller.setSource(s);
     res.json(poller.getStatus());
+  });
+  // Resolve a place name / "lat,lon" / airport code to coordinates for the
+  // control panel's location editor. Never invents a fallback: a miss is a 404,
+  // so the caller never silently relocates to 0,0.
+  app.get("/api/geocode", async (req, res) => {
+    const q = String(req.query.q ?? "").trim();
+    if (!q) return res.status(400).json({ error: "missing query parameter q" });
+    try {
+      const hit = await resolveLocation(q, { userAgent: GEOCODE_UA });
+      if (!hit) return res.status(404).json({ error: `no match for "${q}"` });
+      res.json(hit);
+    } catch {
+      res.status(502).json({ error: "geocoding service unavailable" });
+    }
   });
 
   // --- static web (production build) ---
