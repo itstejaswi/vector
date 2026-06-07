@@ -520,7 +520,11 @@ export class ControlLoop {
         // PI on the pose error: P pulls toward the setpoint, I learns the
         // systematic rate deficit (dither accel transients) so the camera
         // CENTERS the plane instead of trailing it by a held error.
-        const KP = 1.2; // 1/s (was 1.5 — gentler P leans on the feedforward)
+        // Gentle P: the dead-reckoned pose is noisy (inquiry stalls snap it,
+        // observed errPan rms ~8° while vision held the plane centered), so a
+        // strong P just injects that measurement noise as rate jumps. Lean on
+        // the (smooth) feedforward rate + vision for centering; P only trims.
+        const KP = 0.85; // 1/s
         const KI = 0.6; // 1/s² — converges in ~2-3 s, anti-windup below
         const dtTick = 1 / (cfg.predict.commandHz || 15);
         // Low-pass the pose error before the P term: the dead-reckoned pose

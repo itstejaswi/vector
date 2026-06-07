@@ -387,8 +387,8 @@ export const DEFAULT_CONFIG: Config = {
       carrotHorizonSec: 1.5,
       carrotMs: 600,
       posSmoothing: 0.7,
-      errSmoothing: 0.4,
-      maxAccelDps2: 120,
+      errSmoothing: 0.5,
+      maxAccelDps2: 80,
     },
     zoom: {
       auto: true,

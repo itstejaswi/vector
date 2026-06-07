@@ -270,11 +270,14 @@ export class ViscaCamera implements CameraDriver {
   }
 
   /** Max position ripple budget contributed by rate dithering, deg. */
-  private static readonly DITHER_RIPPLE_DEG = 0.4;
-  /** Minimum dwell per discrete speed state, ms. Fewer, longer speed flips
-   *  read (and SOUND) like a glide; the old fixed 160 ms phase flipped both
-   *  axes in lockstep up to 12×/s — mechanically legal, acoustically awful. */
-  private static readonly DITHER_MIN_DWELL_MS = 260;
+  private static readonly DITHER_RIPPLE_DEG = 0.2;
+  /** Minimum dwell per discrete speed state, ms. The pan table has a wide
+   *  low-speed gap (step 1→2 is 3.6→14.8 °/s), so any wanted rate in between
+   *  must dither — and the detrended position ripple is ≈ rate-error × dwell.
+   *  The earlier "quiet" 260 ms dwell drifted ±1.5°, the wobble seen on slow
+   *  pan tracking; 60 ms cuts that ~4× to ±0.4° (≈6–15 speed flips/s — a soft
+   *  hum, not the old lockstep grind). Smoothness wins over silence here. */
+  private static readonly DITHER_MIN_DWELL_MS = 60;
 
   /** Per-axis sigma-delta dither state. */
   private panDither = { onHi: false, since: 0, acc: 0, lastAt: 0 };

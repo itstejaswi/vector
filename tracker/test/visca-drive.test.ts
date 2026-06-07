@@ -196,14 +196,24 @@ describe("sigma-delta dither", () => {
     let dist = 0;
     let flips = 0;
     let prev = -1;
+    const pos: number[] = [];
     const n = Math.round((seconds * 1000) / dt);
     for (let i = 0; i < n; i++) {
       const step = cam.pickDithered(st, TABLE, want, t0 + i * dt);
       if (prev >= 0 && step !== prev) flips++;
       prev = step;
       dist += rateOf(step) * (dt / 1000);
+      pos.push(dist);
     }
-    return { avg: dist / seconds, flips };
+    // Detrended ripple = peak deviation from the mean-rate line. (The mean-
+    // rate error itself is absorbed by the control loop's P/I term; what the
+    // eye sees as wobble is the oscillation AROUND it.)
+    const meanStep = (pos[n - 1] - pos[0]) / (n - 1);
+    let ripple = 0;
+    for (let i = 0; i < n; i++) {
+      ripple = Math.max(ripple, Math.abs(pos[i] - pos[0] - meanStep * i));
+    }
+    return { avg: dist / seconds, flips, ripple };
   }
 
   it("time-averaged rate converges on the wanted rate", () => {
@@ -212,11 +222,12 @@ describe("sigma-delta dither", () => {
     expect(avg).toBeLessThan(9.8);
   });
 
-  it("respects the minimum dwell (far fewer flips than fixed-phase PWM)", () => {
-    const { flips } = run(9, 10);
-    // Min dwell 260 ms -> at most ~38 state changes in 10 s; the old fixed
-    // 160 ms phase produced ~125.
-    expect(flips).toBeLessThanOrEqual(40);
+  it("bounds the detrended position ripple at the worst speed-step gap", () => {
+    // Wanted 9 °/s sits mid-gap between 3.6 and 14.8 — the hardest case, and
+    // the slow-pan rate band where wobble was reported. The 60 ms dwell keeps
+    // the oscillation under ~0.5° (the old 260 ms dwell gave ~1.5°).
+    const { ripple, flips } = run(9, 10);
+    expect(ripple).toBeLessThan(0.6);
     expect(flips).toBeGreaterThan(4); // it must actually dither
   });
 
