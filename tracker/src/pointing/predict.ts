@@ -33,6 +33,12 @@ export interface Prediction {
   /** Target's angular rates at the aim epoch (analytic, for the filters). */
   azRateDps: number;
   elRateDps: number;
+  /**
+   * The plane's TRUE direction right now (fix extrapolated by its age +
+   * decode latency only — NO aim lead). This is the calibration truth: the
+   * lead-shifted azEl is where to POINT, not where the plane IS.
+   */
+  nowAzEl: AzEl;
 }
 
 /** Per-aircraft track history for turn-rate estimation. */
@@ -127,5 +133,7 @@ export function predictAim(
     (norm180(ahead.azDeg - azEl.azDeg) / 0.5);
   const elRateDps = (ahead.elDeg - azEl.elDeg) / 0.5;
 
-  return { azEl, leadSec: lead, clamped, azRateDps, elRateDps };
+  const nowAzEl = predictAt(fixAgeSec + params.adsbLatencySec);
+
+  return { azEl, leadSec: lead, clamped, azRateDps, elRateDps, nowAzEl };
 }

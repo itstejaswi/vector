@@ -163,6 +163,35 @@ export interface VisionState {
   /** Correction currently applied to the aim, deg. */
   correctionAzDeg: number;
   correctionElDeg: number;
+  /** Candidate tracks the world-frame tracker is holding (debug/tuning). */
+  tracks?: {
+    azDeg: number;
+    elDeg: number;
+    hits: number;
+    ageMs: number;
+    azRateDps: number;
+    elRateDps: number;
+    locked: boolean;
+  }[];
+  /** Continuous auto-calibration state. */
+  autoCal?: {
+    samples: number;
+    /** RMS of the current mount model over the buffer, deg. */
+    rmsDeg: number | null;
+    lastAppliedAt: number | null;
+    spanAzDeg: number;
+    spanElDeg: number;
+  };
+  /** Neural detector status. */
+  net?: {
+    enabled: boolean;
+    /** Model loaded and inferring. */
+    ready: boolean;
+    /** Airplane detections in the most recent net frame. */
+    detections: number;
+    /** Load/inference error, if any (e.g. model not yet downloaded). */
+    error?: string;
+  };
 }
 
 /** Everything the debug UI needs, broadcast ~5–10 Hz. */

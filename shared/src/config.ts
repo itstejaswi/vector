@@ -117,6 +117,36 @@ export interface TrackerConfig {
      * timestamped per frame; this covers only the unobservable part.)
      */
     encodeLagMs: number;
+    /**
+     * Max rate the vision correction may slew the aim, deg/s — corrections
+     * glide in instead of stepping per detection (the steps read as jank).
+     */
+    correctionSlewDps: number;
+    /**
+     * Continuously refit the mount model from vision-locked passes (every
+     * steady locked detection is a free calibration sample). Applied only
+     * when the refit clearly beats the current model.
+     */
+    autoCalibrate: boolean;
+    /**
+     * Optional neural airplane detector (ONNX). Adds a SEMANTIC signal that
+     * the classical blob paths lack — kills cloud locks and nails the big-
+     * overhead case. Self-disables gracefully when the runtime or model file
+     * is missing (run scripts/fetch-vision-model.sh on the Pi to install it).
+     */
+    net: {
+      enabled: boolean;
+      /** Path to the .onnx model (downloaded at setup, not committed). */
+      modelPath: string;
+      /** Square network input size (YOLOX-Nano = 416). */
+      inputSize: number;
+      /** Min airplane-class score to accept a detection. */
+      scoreThresh: number;
+      /** COCO class id (4 = airplane). */
+      classId: number;
+      /** Run the net every Nth vision tick (CPU budget). 1 = every tick. */
+      everyNTicks: number;
+    };
   };
   /** Idle "ready position" when auto mode has no target. */
   home: {
@@ -355,6 +385,20 @@ export const DEFAULT_CONFIG: Config = {
       lockWide: true,
       intervalMs: 250,
       encodeLagMs: 350,
+      correctionSlewDps: 1.2,
+      autoCalibrate: true,
+      net: {
+        enabled: true,
+        modelPath: "tracker/models/yolox_nano.onnx",
+        inputSize: 416,
+        scoreThresh: 0.3,
+        classId: 4, // COCO "airplane"
+        // ~266 ms/inference on the Pi 5 (2 threads). Every 3rd vision tick
+        // (~0.75–1 Hz) keeps the 3 s semantic bonus fresh without starving
+        // the TV's ffmpeg/chromium. Raise it if the Pi runs hot; net.enabled
+        // = false drops the whole layer back to classical-only.
+        everyNTicks: 3,
+      },
     },
     home: {
       enabled: true,
@@ -396,7 +440,14 @@ export function mergeTrackerConfig(
     target: { ...base.target, ...(patch.target ?? {}) },
     predict: { ...base.predict, ...(patch.predict ?? {}) },
     zoom: { ...base.zoom, ...(patch.zoom ?? {}) },
-    vision: { ...base.vision, ...(patch.vision ?? {}) },
+    vision: {
+      ...base.vision,
+      ...(patch.vision ?? {}),
+      // `net` is a nested object inside vision — deep-merge it too, or a
+      // partial patch (e.g. {net:{everyNTicks:3}}) would wipe enabled/
+      // modelPath and silently disable the detector.
+      net: { ...base.vision.net, ...(patch.vision?.net ?? {}) },
+    },
     home: { ...base.home, ...(patch.home ?? {}) },
   } as TrackerConfig;
 }

@@ -48,6 +48,11 @@ export interface DetectOptions {
    * sky by construction and a large plane would mask itself.
    */
   useMask?: boolean;
+  /**
+   * Also run the large/near-object detector and merge its result. The speck
+   * path cannot see a big overhead plane; this fills that gap. Defaults off.
+   */
+  detectLarge?: boolean;
 }
 
 const W = 480;
@@ -124,6 +129,190 @@ export function findBlob(
   opts: DetectOptions = {},
 ): Detection | null {
   return findBlobs(luma, width, height, opts)[0] ?? null;
+}
+
+/**
+ * Large/near plane detector. The speck path (findBlobs) is built for tiny
+ * high-contrast dots and actively REJECTS a big plane: the sky-mask eats it
+ * as "texture", the 24px background grid absorbs it, and maxArea drops it —
+ * so an overhead airliner produced no detection at all. This path is the
+ * complement: model the sky as a smooth plane fitted to the FRAME BORDER
+ * (which is sky when the plane is roughly centered), then the plane is the
+ * large connected region that deviates from it (dark OR bright) near the
+ * expected position. No sky-mask, no area ceiling.
+ */
+export function findLargeObject(
+  luma: Uint8Array,
+  width: number,
+  height: number,
+  opts: DetectOptions = {},
+): Detection | null {
+  const exX = opts.expectedX ?? 0.5;
+  const exY = opts.expectedY ?? 0.5;
+  const minSigma = opts.minSigma ?? 4;
+
+  // --- robust planar sky model from the border ring (luma ≈ a + b·x + c·y) ---
+  const ring = Math.max(2, Math.round(Math.min(width, height) * 0.12));
+  // Normal equations for least squares over border samples.
+  let n = 0;
+  let sx = 0, sy = 0, sxx = 0, sxy = 0, syy = 0;
+  let sl = 0, slx = 0, sly = 0;
+  const isBorder = (x: number, y: number) =>
+    x < ring || y < ring || x >= width - ring || y >= height - ring;
+  for (let y = 0; y < height; y += 2) {
+    for (let x = 0; x < width; x += 2) {
+      if (!isBorder(x, y)) continue;
+      const l = luma[y * width + x];
+      n++; sx += x; sy += y; sxx += x * x; sxy += x * y; syy += y * y;
+      sl += l; slx += l * x; sly += l * y;
+    }
+  }
+  if (n < 12) return null;
+  // Solve the 3×3 system [[n,sx,sy],[sx,sxx,sxy],[sy,sxy,syy]]·[a,b,c]=[sl,slx,sly].
+  const A = [
+    [n, sx, sy],
+    [sx, sxx, sxy],
+    [sy, sxy, syy],
+  ];
+  const rhs = [sl, slx, sly];
+  const sky = solve3(A, rhs) ?? [sl / n, 0, 0];
+  const skyAt = (x: number, y: number) => sky[0] + sky[1] * x + sky[2] * y;
+
+  // Border residual spread (robust-ish): MAD of border residuals.
+  const bres: number[] = [];
+  for (let y = 0; y < height; y += 2) {
+    for (let x = 0; x < width; x += 2) {
+      if (!isBorder(x, y)) continue;
+      bres.push(Math.abs(luma[y * width + x] - skyAt(x, y)));
+    }
+  }
+  bres.sort((a, b) => a - b);
+  const mad = bres[Math.floor(bres.length / 2)] ?? 1;
+  const sigma = Math.max(2, mad * 1.4826);
+  const thresh = minSigma * sigma;
+
+  // --- foreground = deviation from the sky plane, near the expectation ---
+  // Search a generous window around where ADS-B says the plane is.
+  const winR = 0.42; // frame fractions
+  const wx0 = Math.max(0, Math.floor((exX - winR) * width));
+  const wx1 = Math.min(width - 1, Math.ceil((exX + winR) * width));
+  const wy0 = Math.max(0, Math.floor((exY - winR) * height));
+  const wy1 = Math.min(height - 1, Math.ceil((exY + winR) * height));
+
+  const fg = new Uint8Array(width * height);
+  for (let y = wy0; y <= wy1; y++) {
+    for (let x = wx0; x <= wx1; x++) {
+      const i = y * width + x;
+      if (Math.abs(luma[i] - skyAt(x, y)) > thresh) fg[i] = 1;
+    }
+  }
+  // Morphological close (3×3 dilate then erode) to bridge a plane's thin
+  // wings/tail into one body and fill JPEG speckle.
+  morph(fg, width, wx0, wy0, wx1, wy1, 1); // dilate
+  morph(fg, width, wx0, wy0, wx1, wy1, 0); // erode
+
+  // --- largest connected component near the expectation ---
+  const seen = new Uint8Array(width * height);
+  const stack: number[] = [];
+  let best: Detection | null = null;
+  let bestScore = 0;
+  const exPxX = exX * width;
+  const exPxY = exY * height;
+  for (let y = wy0; y <= wy1; y++) {
+    for (let x = wx0; x <= wx1; x++) {
+      const i = y * width + x;
+      if (seen[i] || !fg[i]) continue;
+      let area = 0, ssx = 0, ssy = 0, peak = 0;
+      let minX = width, maxX = 0, minY = height, maxY = 0;
+      stack.push(i);
+      seen[i] = 1;
+      while (stack.length) {
+        const p = stack.pop()!;
+        const px = p % width;
+        const py = (p / width) | 0;
+        area++; ssx += px; ssy += py;
+        peak = Math.max(peak, Math.abs(luma[p] - skyAt(px, py)));
+        if (px < minX) minX = px; if (px > maxX) maxX = px;
+        if (py < minY) minY = py; if (py > maxY) maxY = py;
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            const nx = px + dx, ny = py + dy;
+            if (nx < wx0 || ny < wy0 || nx > wx1 || ny > wy1) continue;
+            const np = ny * width + nx;
+            if (!seen[np] && fg[np]) { seen[np] = 1; stack.push(np); }
+          }
+        }
+      }
+      // Big means big: this path only owns objects past the speck ceiling.
+      const minLarge = opts.minArea ?? 60;
+      if (area < minLarge) continue;
+      const bw = maxX - minX + 1;
+      const bh = maxY - minY + 1;
+      const fill = area / (bw * bh);
+      if (fill < 0.18) continue; // diffuse cloud field, not a solid airframe
+      const aspect = Math.max(bw, bh) / Math.max(1, Math.min(bw, bh));
+      if (aspect > 9) continue; // a wire / contrail / roof edge
+      const cx = ssx / area / width;
+      const cy = ssy / area / height;
+      const distPx = Math.hypot(ssx / area - exPxX, ssy / area - exPxY);
+      const distFrac = distPx / width;
+      if (distFrac > (opts.maxDistFrac ?? 0.35)) continue;
+      // Prefer big, compact, high-contrast, near the expectation.
+      const score = (peak / sigma) * Math.sqrt(area) * fill / (0.15 + distFrac);
+      if (score > bestScore) {
+        bestScore = score;
+        best = {
+          cx, cy, areaPx: area,
+          contrastSigma: peak / sigma,
+          box: { x: minX / width, y: minY / height, w: bw / width, h: bh / height },
+          score,
+        };
+      }
+    }
+  }
+  return best;
+}
+
+/** In-place 3×3 morphology over a window. mode 1 = dilate, 0 = erode. */
+function morph(
+  fg: Uint8Array, width: number,
+  x0: number, y0: number, x1: number, y1: number, mode: 1 | 0,
+): void {
+  const src = fg.slice();
+  const want = mode; // dilate: any neighbor 1 -> 1; erode: any neighbor 0 -> 0
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      let hit = mode === 1 ? 0 : 1;
+      for (let dy = -1; dy <= 1 && hit !== want; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx, ny = y + dy;
+          if (nx < x0 || ny < y0 || nx > x1 || ny > y1) continue;
+          const v = src[ny * width + nx];
+          if (mode === 1 && v === 1) { hit = 1; break; }
+          if (mode === 0 && v === 0) { hit = 0; break; }
+        }
+      }
+      fg[y * width + x] = hit;
+    }
+  }
+}
+
+/** Solve a 3×3 linear system by Cramer's rule; null if near-singular. */
+function solve3(A: number[][], b: number[]): number[] | null {
+  const d = det3(A);
+  if (Math.abs(d) < 1e-6) return null;
+  const c0 = det3([[b[0], A[0][1], A[0][2]], [b[1], A[1][1], A[1][2]], [b[2], A[2][1], A[2][2]]]);
+  const c1 = det3([[A[0][0], b[0], A[0][2]], [A[1][0], b[1], A[1][2]], [A[2][0], b[2], A[2][2]]]);
+  const c2 = det3([[A[0][0], A[0][1], b[0]], [A[1][0], A[1][1], b[1]], [A[2][0], A[2][1], b[2]]]);
+  return [c0 / d, c1 / d, c2 / d];
+}
+
+function det3(m: number[][]): number {
+  return (
+    m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) -
+    m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) +
+    m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0])
+  );
 }
 
 /** All plane-like blobs, best-scored first (capped at `limit`). */
@@ -283,6 +472,16 @@ export function findBlobs(
   return found.slice(0, limit);
 }
 
+/** Do two frame-fraction boxes overlap at all? */
+function boxesOverlap(
+  a: { x: number; y: number; w: number; h: number },
+  b: { x: number; y: number; w: number; h: number },
+): boolean {
+  return (
+    a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y
+  );
+}
+
 /** Decode a JPEG frame and run the detector at reduced scale. */
 export async function detectInJpeg(
   jpeg: Buffer,
@@ -329,12 +528,23 @@ export async function detectCandidatesInJpeg(
     expectedY: opts.expectedY != null ? (opts.expectedY - effRoi.y) / effRoi.h : undefined,
     maxDistFrac: opts.maxDistFrac != null ? opts.maxDistFrac / effRoi.w : undefined,
   };
-  const dets = findBlobs(
-    new Uint8Array(data.buffer, data.byteOffset, data.length),
-    info.width,
-    info.height,
-    roiOpts,
-  );
+  const luma = new Uint8Array(data.buffer, data.byteOffset, data.length);
+  const dets = findBlobs(luma, info.width, info.height, roiOpts);
+  // The large-object path runs on the SAME decoded buffer (no second decode).
+  // It owns the regime the speck detector is blind to — merge, de-dup by
+  // overlap (a big plane can register weakly in both; keep the large one).
+  if (opts.detectLarge) {
+    const large = findLargeObject(luma, info.width, info.height, {
+      ...roiOpts,
+      minArea: roiOpts.minArea && roiOpts.minArea > 60 ? roiOpts.minArea : 60,
+    });
+    if (large) {
+      const overlapping = dets.findIndex((d) => boxesOverlap(d.box, large.box));
+      if (overlapping >= 0) dets.splice(overlapping, 1);
+      dets.push(large);
+      dets.sort((a, b) => b.score - a.score);
+    }
+  }
   // ...and the results back into full-frame fractions.
   return dets.map((d) => ({
     ...d,
@@ -363,7 +573,9 @@ export async function renderDebug(jpeg: Buffer, opts: DetectOptions = {}): Promi
   const h = info.height;
   const luma = new Uint8Array(data.buffer, data.byteOffset, data.length);
   const mask = (opts.useMask ?? true) ? skyMask(luma, w, h) : null;
-  const det = findBlob(luma, w, h, opts);
+  const det =
+    findBlob(luma, w, h, opts) ??
+    (opts.detectLarge ? findLargeObject(luma, w, h, opts) : null);
 
   const rgb = Buffer.alloc(w * h * 3);
   for (let i = 0; i < w * h; i++) {

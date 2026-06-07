@@ -20,3 +20,6 @@ core.*
 .idea/
 .vscode/
 
+
+# downloaded vision models (fetched at setup, not committed)
+tracker/models/

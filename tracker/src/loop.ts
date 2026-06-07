@@ -26,16 +26,26 @@ import {
   type TrackerMode,
   type TrackerState,
 } from "@shared/index.js";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
 import type { CameraDriver } from "./camera/driver.js";
+import { AutoCalibrator } from "./calibration/auto.js";
 import { CalibrationSession } from "./calibration/session.js";
 import { planPass, zenithHold, ZENITH_MIN_HFOV } from "./pointing/planner.js";
 import { predictAim, TrackHistory, type Prediction } from "./pointing/predict.js";
 import { selectTarget, type CurrentTarget } from "./pointing/target.js";
 import { chooseZoom } from "./pointing/zoom.js";
 import { detectCandidatesInJpeg, type Detection } from "./vision/detect.js";
+import { PlaneNet } from "./vision/net.js";
+import { TrackTable, type WorldObs } from "./vision/tracks.js";
 import type { Recorder } from "./record.js";
 import type { Upstream } from "./upstream.js";
 import type { VideoStream } from "./video/stream.js";
+
+const TRACKER_DIR = dirname(fileURLToPath(import.meta.url));
+const AUTOCAL_FILE = resolve(TRACKER_DIR, "../data/autocal.json");
+/** Repo root — config model paths ("tracker/models/…") resolve against it. */
+const APP_ROOT = resolve(TRACKER_DIR, "../..");
 
 export class ControlLoop {
   private mode: TrackerMode = "auto";
@@ -73,6 +83,21 @@ export class ControlLoop {
   /** Estimated ADS-B-vs-vision aim bias (blob − prediction), world deg. */
   private corrAz = 0;
   private corrEl = 0;
+  /** What's actually applied to the aim — slews toward corrAz/corrEl at a
+   *  bounded rate so corrections GLIDE in (per-detection steps read as jank). */
+  private corrAzApp = 0;
+  private corrElApp = 0;
+  /** World-frame candidate tracks: the plane is whichever one MOVES like
+   *  the ADS-B prediction, not whichever blob shone brightest this frame. */
+  private tracks = new TrackTable();
+  /** Continuous auto-calibration from locked passes. */
+  private autoCal = new AutoCalibrator(AUTOCAL_FILE);
+  private lastAutoCalAt = 0;
+  /** Optional neural airplane detector (no-op until a model is installed). */
+  private net: PlaneNet | null = null;
+  private netTick = 0;
+  /** Net detections from the most recent net frame, frame fractions + score. */
+  private netDets: { cx: number; cy: number; box: { x: number; y: number; w: number; h: number }; score: number }[] = [];
   /** Since when the detection has been continuously near center (0 = not). */
   private visionGoodSince = 0;
   /** Zoom ladder rung (0 = full wide); climbs as vision lock sustains. */
@@ -89,6 +114,16 @@ export class ControlLoop {
     aimEl: number;
     predAz: number;
     predEl: number;
+    /** The plane's TRUE direction at entry time (no aim lead) — the
+     *  calibration truth. */
+    truthAz: number;
+    truthEl: number;
+    /** Setpoint angular rates (for the tracker's velocity matching). */
+    rateAzDps: number;
+    rateElDps: number;
+    /** Mechanical pose (auto-calibration needs raw pan/tilt). */
+    panDeg: number;
+    tiltDeg: number;
     hfov: number;
   }[] = [];
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -249,8 +284,12 @@ export class ControlLoop {
     // Vision state is target-specific — a stale lock or correction from the
     // previous plane must not smear onto the new one.
     this.lastDetection = null;
+    this.tracks.reset();
+    this.netDets = [];
     this.corrAz = 0;
     this.corrEl = 0;
+    this.corrAzApp = 0;
+    this.corrElApp = 0;
     this.visionGoodSince = 0;
     this.ladderIdx = 0;
     this.lastLadderAt = 0;
@@ -344,11 +383,15 @@ export class ControlLoop {
         const dt = 1 / (cfg.predict.commandHz || 15);
         az = this.azTracker.propagate(dt, cfg.limits.panSpeedMaxDps);
         el = this.elTracker.propagate(dt, cfg.limits.tiltSpeedMaxDps);
-        // Vision steering (Phase B): slow integral correction from the
-        // detector, nudging the ADS-B aim onto the actual pixels.
+        // Vision steering: the bias estimator's output, applied through a
+        // rate limiter — the correction GLIDES onto the aim instead of
+        // stepping per detection (4 Hz steps read as jank at tele).
         if (cfg.vision.applyCorrection) {
-          az += this.corrAz;
-          el = Math.min(90, Math.max(0, el + this.corrEl));
+          const step = (cfg.vision.correctionSlewDps || 1.2) * dt;
+          this.corrAzApp += clamp(norm180(this.corrAz - this.corrAzApp), -step, step);
+          this.corrElApp += clamp(this.corrEl - this.corrElApp, -step, step);
+          az += this.corrAzApp;
+          el = Math.min(90, Math.max(0, el + this.corrElApp));
         }
       }
 
@@ -582,11 +625,43 @@ export class ControlLoop {
         aimEl: aim.elDeg,
         predAz: prediction.azEl.azDeg,
         predEl: prediction.azEl.elDeg,
+        truthAz: prediction.nowAzEl.azDeg,
+        truthEl: prediction.nowAzEl.elDeg,
+        rateAzDps: this.azTracker.rate,
+        rateElDps: this.elTracker.rate,
+        panDeg: poseEst.panDeg,
+        tiltDeg: poseEst.tiltDeg,
         hfov: hfovFromZoomUnits(poseEst.zoomUnits, cfg.zoom.fovLut),
       });
       if (this.aimHistory.length > 150) this.aimHistory.shift();
     } else if (!prediction) {
       this.aimHistory.length = 0;
+    }
+
+    // Between passes: refit the mount from the pass's calibration samples.
+    // trySolve only returns a model that clearly beats the current one; the
+    // bias estimator's state is folded into the model and reset.
+    if (
+      !prediction &&
+      cfg.vision.autoCalibrate &&
+      this.autoCal.hasNewData &&
+      now - this.lastAutoCalAt > 30_000
+    ) {
+      this.lastAutoCalAt = now;
+      const out = this.autoCal.trySolve(cfg.mount, now);
+      if (out) {
+        this.upstream.patchConfig({ tracker: { mount: out.model } } as Partial<Config>);
+        this.corrAz = 0;
+        this.corrEl = 0;
+        this.corrAzApp = 0;
+        this.corrElApp = 0;
+        this.recorder.write("autoCal", { ...out });
+        console.log(
+          `[tracker] auto-calibration applied: rms ${out.rmsBeforeDeg.toFixed(2)}° -> ` +
+            `${out.rmsAfterDeg.toFixed(2)}° over ${out.n} samples` +
+            (out.solvedGains ? " (gains)" : "") + (out.solvedLevel ? " (level)" : ""),
+        );
+      }
     }
 
     this.lastState = this.assembleState(
@@ -649,8 +724,30 @@ export class ControlLoop {
               ageMs: now - this.lastDetection.t,
             }
           : null,
-        correctionAzDeg: this.corrAz,
-        correctionElDeg: this.corrEl,
+        correctionAzDeg: this.corrAzApp,
+        correctionElDeg: this.corrElApp,
+        tracks: this.tracks.all().map((t) => {
+          const v = t.velocity();
+          const p = t.latest();
+          return {
+            azDeg: p.azDeg,
+            elDeg: p.elDeg,
+            hits: t.hits,
+            ageMs: now - t.createdAt,
+            azRateDps: v.azRateDps,
+            elRateDps: v.elRateDps,
+            locked: this.tracks.lockedTrack()?.id === t.id,
+          };
+        }),
+        autoCal: cfg.vision.autoCalibrate ? this.autoCal.status(cfg.mount) : undefined,
+        net: cfg.vision.net?.enabled
+          ? {
+              enabled: true,
+              ready: this.net?.ready ?? false,
+              detections: this.netDets.length,
+              error: this.net?.error ?? undefined,
+            }
+          : undefined,
       },
       site: cfg.site,
       upstream: {
@@ -658,6 +755,23 @@ export class ControlLoop {
         aircraftCount: this.upstream.getAircraft().length,
       },
     };
+  }
+
+  /** Create/refresh the neural detector to match config (no-op if disabled). */
+  private ensureNet(cfg: TrackerConfig): PlaneNet | null {
+    const nc = cfg.vision.net;
+    if (!nc?.enabled) {
+      this.net = null;
+      return null;
+    }
+    const modelPath = resolve(APP_ROOT, nc.modelPath);
+    const want = { enabled: true, modelPath, inputSize: nc.inputSize, scoreThresh: nc.scoreThresh, classId: nc.classId };
+    // Recreate only when the model identity changes.
+    if (!this.net || (this.net as unknown as { cfg: { modelPath: string } }).cfg.modelPath !== modelPath) {
+      this.net = new PlaneNet(want);
+    }
+    void this.net.ensureLoaded();
+    return this.net;
   }
 
   /** Aim/prediction history entry nearest a timestamp. */
@@ -670,8 +784,11 @@ export class ControlLoop {
   }
 
   /**
-   * Vision pass (Phase B v2): find the plane in the latest frame near the
-   * motion-compensated expectation, and update the ADS-B bias estimate.
+   * Vision pass (Phase C): track-before-detect. Every candidate blob is
+   * converted to WORLD az/el at frame time and fed to a small track table;
+   * the plane is whichever track MOVES like the ADS-B prediction says the
+   * plane moves (clouds are world-static, noise is incoherent). The locked
+   * track drives the bias estimator, the zoom gate, and auto-calibration.
    * Everything is referenced to FRAME TIME via per-frame arrival timestamps.
    */
   private async visionTick(): Promise<void> {
@@ -680,6 +797,8 @@ export class ControlLoop {
       (this.mode === "auto" || this.mode === "manual") && this.current !== null;
     if (!cfg.vision.enabled || !tracking) {
       this.lastDetection = null;
+      this.tracks.reset();
+      this.netDets = [];
       this.corrAz = 0;
       this.corrEl = 0;
       return;
@@ -703,46 +822,26 @@ export class ControlLoop {
     const preT = Date.now();
     const frameT = (frameArrivedAt > 0 ? frameArrivedAt : preT) - cfg.vision.encodeLagMs;
     const sign = Math.sign(cfg.mount.panGain) || 1;
+    const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 
-    // Where should the plane be in THIS frame? Prefer where we LAST SAW it
-    // (temporal stickiness — clouds offer competing blobs), advanced by how
-    // much the aim-vs-prediction geometry shifted between the two frame
-    // times (motion compensation: a tight leash on a moving camera must
-    // move with it or it strangles the lock). Fall back to ADS-B.
+    // Where should the plane be in THIS frame? The locked track's WORLD
+    // position advanced to frame time (world-frame stickiness — it moves
+    // with both the camera and the plane by construction), else ADS-B.
     let exX = 0.5;
     let exY = 0.5;
-    const prevFresh =
-      this.lastDetection && preT - this.lastDetection.t < 1500
-        ? this.lastDetection
-        : null;
-    if (prevFresh) {
-      exX = prevFresh.cx;
-      exY = prevFresh.cy;
-      const h1 = this.aimAt(prevFresh.frameT);
-      const h2 = this.aimAt(frameT);
-      if (h1 && h2) {
-        // The zoom LADDER changes hfov between frames — the same world
-        // offset lands further from center in a tighter frame. Rescale the
-        // previous blob position by the fov ratio or every rung change
-        // breaks the temporal chain (observed as snap-to-wide resets).
-        const zScale = h1.hfov / Math.max(0.5, h2.hfov);
-        exX = 0.5 + (exX - 0.5) * zScale;
-        exY = 0.5 + (exY - 0.5) * zScale;
-        const hfovRef = h2.hfov;
-        const cosEl = Math.max(0.2, Math.cos((h2.aimEl * Math.PI) / 180));
-        const dOffAz = norm180(
-          norm180(h2.predAz - h2.aimAz) - norm180(h1.predAz - h1.aimAz),
-        );
-        const dOffEl = (h2.predEl - h2.aimEl) - (h1.predEl - h1.aimEl);
-        exX = Math.min(1, Math.max(0, exX + (dOffAz * cosEl * sign) / hfovRef));
-        exY = Math.min(1, Math.max(0, exY - dOffEl / (hfovRef * (9 / 16))));
-      }
+    const lockedBefore = this.tracks.lockedTrack();
+    const atPre = this.aimAt(frameT);
+    if (lockedBefore && atPre) {
+      const p = lockedBefore.positionAt(frameT);
+      const cosE = Math.max(0.2, Math.cos((atPre.aimEl * Math.PI) / 180));
+      exX = clamp01(0.5 + (norm180(p.azDeg - atPre.aimAz) * cosE * sign) / atPre.hfov);
+      exY = clamp01(0.5 - (p.elDeg - atPre.aimEl) / (atPre.hfov * (9 / 16)));
     } else if (predicted) {
       const dAz =
         norm180(predicted.azDeg - aim.azDeg) *
         Math.cos((predicted.elDeg * Math.PI) / 180);
-      exX = Math.min(1, Math.max(0, 0.5 + dAz / hfov));
-      exY = Math.min(1, Math.max(0, 0.5 - (predicted.elDeg - aim.elDeg) / vfov));
+      exX = clamp01(0.5 + dAz / hfov);
+      exY = clamp01(0.5 - (predicted.elDeg - aim.elDeg) / vfov);
     }
 
     // Tight-follow at native resolution: a distant plane is 3-6 px on the
@@ -750,7 +849,14 @@ export class ControlLoop {
     // expectation keeps detector pixels ~native (≈2.7× finer at 720p).
     // Zoomed in, the plane is big and may overflow a crop — stay full-frame.
     const wide = hfov > 25;
-    const useRoi = prevFresh != null && wide;
+    // Big-plane regime: when the predicted angular size is a real fraction of
+    // the frame (close/overhead), or zoomed in, the speck detector is blind —
+    // run the large-object path too. ROI mode would crop a big plane, so the
+    // large path only runs full-frame.
+    const angSizeDeg = this.lastState?.target.angularSizeDeg ?? 0;
+    const bigInFrame = angSizeDeg / hfov > 0.03;
+    const useRoi = lockedBefore != null && wide && !bigInFrame;
+    const detectLarge = !useRoi && (bigInFrame || !wide || lockedBefore == null);
     const roi = useRoi
       ? { x: exX - 0.1875, y: exY - 0.1875, w: 0.375, h: 0.375 }
       : undefined;
@@ -762,129 +868,204 @@ export class ControlLoop {
         {
           expectedX: exX,
           expectedY: exY,
-          // Tight leash while following a blob; wider when reacquiring.
-          maxDistFrac: prevFresh ? 0.15 : 0.3,
+          // Moderate leash while locked; wider when searching. The track
+          // table does the discrimination now — the leash only bounds the
+          // detector's search, it no longer picks the winner.
+          maxDistFrac: lockedBefore ? 0.22 : 0.32,
           // Sky-mask only while wide; zoomed in, the frame IS sky and a big
           // plane would mask itself.
-          useMask: wide,
+          useMask: wide && !bigInFrame,
           // Area limits live in detector px — ~7× finer in ROI mode.
           minArea: useRoi ? 2 : 1,
           maxArea: useRoi ? 4000 : wide ? 600 : 5000,
+          // Complement the speck path with the large-object detector when the
+          // plane is (or may be) big in frame.
+          detectLarge,
         },
         roi,
       );
-      const now = Date.now();
-
-      // While following a blob, prefer the candidate CONSISTENT with the
-      // motion-compensated expectation over the raw best: a cloud edge that
-      // pops up brighter elsewhere loses to the blob that moved like the
-      // plane. A clearly-stronger far blob still wins (vision glitch).
-      let det: Detection | null = null;
-      if (prevFresh) {
-        det = cands.find((c) => Math.hypot(c.cx - exX, c.cy - exY) < 0.1) ?? null;
-        if (!det && cands[0] && cands[0].contrastSigma > prevFresh.contrastSigma * 1.5) {
-          det = cands[0];
+      // Neural airplane pass (throttled): the semantic signal the blob paths
+      // lack. Runs on the same frame; its boxes get fused below — confirming
+      // real blobs and seeding observations for planes the blob detector
+      // missed. No-op (netDets stays []) until a model is installed.
+      const net = this.ensureNet(cfg);
+      if (net && net.ready) {
+        const everyN = Math.max(1, cfg.vision.net.everyNTicks || 1);
+        if (this.netTick++ % everyN === 0) {
+          this.netDets = await net.detect(frame);
         }
       } else {
-        det = cands[0] ?? null;
+        this.netDets = [];
       }
 
-      // The zoom gate is updated below on the LAG-COMPENSATED residual; a
-      // long detection drought closes it.
-      if (!det && this.lastDetection && now - this.lastDetection.t > 1200) {
-        this.visionGoodSince = 0;
+      const now = Date.now();
+      const atFrame = this.aimAt(frameT);
+      const latest = this.aimHistory[this.aimHistory.length - 1];
+      if (!atFrame || !latest) return; // need history to place obs in the world
+
+      // Aim slew rate around frame time: fast sweeps can't be lag-compensated
+      // precisely (±150 ms of frame-time error at 60°/s = ±9° of phantom
+      // offset), so association gates widen and integration pauses.
+      const nb = this.aimHistory.filter((h) => Math.abs(h.t - frameT) < 250);
+      let aimRateDps = Infinity;
+      if (nb.length >= 2) {
+        const a0 = nb[0];
+        const a1 = nb[nb.length - 1];
+        const dt = Math.max(0.05, (a1.t - a0.t) / 1000);
+        aimRateDps = Math.hypot(
+          norm180(a1.aimAz - a0.aimAz) * Math.cos((a1.aimEl * Math.PI) / 180),
+          a1.aimEl - a0.aimEl,
+        ) / dt;
       }
-      if (det) {
-        const atFrame = this.aimAt(frameT);
-        const latest = this.aimHistory[this.aimHistory.length - 1];
 
-        // Blob offset from frame center -> world angles, at frame time.
-        // Image-right is the +pan direction; az sign follows the pan gain.
-        const hfovF = atFrame?.hfov ?? hfov;
-        const elF = atFrame?.aimEl ?? aim.elDeg;
-        const offAzDeg =
-          ((det.cx - 0.5) * hfovF * sign) /
-          Math.max(0.2, Math.cos((elF * Math.PI) / 180));
-        const offElDeg = (0.5 - det.cy) * hfovF * (9 / 16);
-        this.lastDetection = { ...det, t: now, frameT, offAzDeg, offElDeg };
+      // ALL candidates become world observations at frame time.
+      const hfovF = atFrame.hfov;
+      const elF = atFrame.aimEl;
+      const cosE = Math.max(0.2, Math.cos((elF * Math.PI) / 180));
+      const toWorld = (cx: number, cy: number) => ({
+        azDeg: atFrame.aimAz + ((cx - 0.5) * hfovF * sign) / cosE,
+        elDeg: atFrame.aimEl + (0.5 - cy) * hfovF * (9 / 16),
+      });
+      const obs: WorldObs[] = cands.map((c) => {
+        const w = toWorld(c.cx, c.cy);
+        // A blob that falls inside a neural airplane box inherits its score.
+        const hit = this.netDets.find(
+          (nd) => Math.abs(nd.cx - c.cx) < nd.box.w / 2 + 0.02 &&
+                  Math.abs(nd.cy - c.cy) < nd.box.h / 2 + 0.02,
+        );
+        return {
+          t: frameT, azDeg: w.azDeg, elDeg: w.elDeg,
+          cx: c.cx, cy: c.cy, box: c.box,
+          contrastSigma: c.contrastSigma, areaPx: c.areaPx,
+          netScore: hit?.score,
+        };
+      });
+      // Neural detections with NO matching blob still seed observations — a
+      // big/faint plane the blob paths missed enters as an airplane track.
+      for (const nd of this.netDets) {
+        const matched = cands.some(
+          (c) => Math.abs(nd.cx - c.cx) < nd.box.w / 2 + 0.02 &&
+                 Math.abs(nd.cy - c.cy) < nd.box.h / 2 + 0.02,
+        );
+        if (matched) continue;
+        const w = toWorld(nd.cx, nd.cy);
+        obs.push({
+          t: frameT, azDeg: w.azDeg, elDeg: w.elDeg,
+          cx: nd.cx, cy: nd.cy, box: nd.box,
+          contrastSigma: 6, // net-confirmed: treat as solid contrast
+          areaPx: Math.round(nd.box.w * nd.box.h * 480 * 270),
+          netScore: nd.score,
+        });
+      }
 
-        // Temporal confirmation: integrate correction only when the blob
-        // repeats where the compensated expectation put it — a one-frame
-        // wonder steers nothing.
-        const confirmed =
-          prevFresh != null && Math.hypot(det.cx - exX, det.cy - exY) < 0.06;
+      // Associate into tracks; pick the lock by MOTION against the
+      // prediction. Clouds lose on velocity even when brighter and closer.
+      const gateDeg =
+        Math.max(0.4, hfovF * 0.07) +
+        (Number.isFinite(aimRateDps) ? 0.18 * Math.min(20, aimRateDps) : 1.5);
+      this.tracks.update(obs, frameT, gateDeg);
+      const sel = this.tracks.select(
+        {
+          azDeg: atFrame.predAz,
+          elDeg: atFrame.predEl,
+          azRateDps: atFrame.rateAzDps,
+          elRateDps: atFrame.rateElDps,
+        },
+        frameT,
+        { posScaleDeg: Math.max(1.6, hfovF * 0.05) },
+      );
+      const lt = sel?.track ?? null;
+      const freshLock = lt != null && lt.lastSeen === frameT; // updated THIS frame
 
-        // Slew gate: a frame exposed while the camera swept fast cannot be
-        // lag-compensated precisely (±150 ms of frame-time error at 60°/s is
-        // ±9° of phantom bias — observed railing the estimator right after
-        // acquisition). Only integrate when the aim was quasi-static around
-        // frame time, and below the zenith's 1/cos(el) blow-up.
-        const nb = this.aimHistory.filter((h) => Math.abs(h.t - frameT) < 250);
-        let aimRateDps = Infinity;
-        if (nb.length >= 2) {
-          const a0 = nb[0];
-          const a1 = nb[nb.length - 1];
-          const dt = Math.max(0.05, (a1.t - a0.t) / 1000);
-          aimRateDps = Math.hypot(
-            norm180(a1.aimAz - a0.aimAz) * Math.cos((a1.aimEl * Math.PI) / 180),
-            a1.aimEl - a0.aimEl,
-          ) / dt;
-        }
+      if (lt && freshLock) {
+        const o = lt.latest();
+        // True-azimuth offset of the blob from the aim (matches the offAzDeg
+        // convention everywhere else: an azimuth delta, not an arc length).
+        const offAz = norm180(o.azDeg - atFrame.aimAz);
+        const offElDeg = o.elDeg - atFrame.aimEl;
+        this.lastDetection = {
+          cx: o.cx,
+          cy: o.cy,
+          areaPx: o.areaPx,
+          contrastSigma: o.contrastSigma,
+          box: o.box,
+          score: sel?.score ?? 0,
+          t: now,
+          frameT,
+          offAzDeg: offAz,
+          offElDeg,
+        };
+
         const steady = aimRateDps < 8 && elF < 75;
+        // The lock IS the temporal confirmation now: a track only becomes
+        // the lock after several coherent, motion-consistent frames.
+        const confirmed = lt.hits >= 4;
 
-        if (confirmed && cfg.vision.applyCorrection && atFrame && latest) {
+        if (confirmed && cfg.vision.applyCorrection) {
           // Where the blob (the plane, then) is NOW, world frame:
           //   blob@frame + plane's own predicted motion since the frame.
           const blobNowAz =
-            atFrame.aimAz + offAzDeg + norm180(latest.predAz - atFrame.predAz);
+            atFrame.aimAz + offAz + norm180(latest.predAz - atFrame.predAz);
           const blobNowEl =
             atFrame.aimEl + offElDeg + (latest.predEl - atFrame.predEl);
           // Residual still to close, vs the CURRENT aim (zoom gate below).
           const residAz = norm180(blobNowAz - latest.aimAz);
           const residEl = blobNowEl - latest.aimEl;
           // Correction = the ADS-B bias the detector reveals: where vision
-          // says the plane is MINUS where the prediction says it is. This is
-          // a direct estimate of an exogenous offset — unlike integrating the
-          // pointing residual, it has no feedback path through the camera's
-          // ~1 s frame+actuation delay, so it cannot wind up or oscillate
-          // (the old integral railed at the ±4° clamp in the field). Only
-          // integrate when quasi-static (the slew gate) — but the ZOOM gate
-          // below must keep updating regardless, or the ladder demotes on a
-          // perfectly-held lock just because the camera is sweeping.
+          // says the plane is MINUS where the prediction says it is. Direct
+          // estimate of an exogenous offset — no feedback path through the
+          // camera's ~1 s delay, so it cannot wind up or oscillate. Only
+          // integrates when quasi-static (slew gate); the ZOOM gate keeps
+          // updating regardless or the ladder would demote on a perfectly-
+          // held lock just because the camera is sweeping.
           if (steady) {
             const biasAz = norm180(blobNowAz - latest.predAz);
             const biasEl = blobNowEl - latest.predEl;
-            // Estimator blend per confirmed detection. Gentler when zoomed:
-            // the bias barely changes once locked, and chasing measurement
-            // jitter at 4 Hz reads as rocking when the FOV is a few degrees.
             const G = hfovF < 15 ? 0.15 : 0.35;
-            // ±6°: real cross-track ADS-B bias has been observed saturating
-            // a ±4° clamp (the estimator was healthy — the plane genuinely
-            // was that far from the prediction). The false-lock safeguards
-            // (slew gate, motion leash, confirmation) bound the risk now.
             this.corrAz = clamp(this.corrAz + G * norm180(biasAz - this.corrAz), -6, 6);
             this.corrEl = clamp(this.corrEl + G * (biasEl - this.corrEl), -6, 6);
           }
           // Zoom gate: "near center" judged on the lag-compensated residual.
           const residFrac =
-            Math.hypot(residAz * Math.cos((elF * Math.PI) / 180), residEl) /
-            (hfovF / 2);
+            Math.hypot(residAz * cosE, residEl) / (hfovF / 2);
           if (residFrac < 0.35) {
             if (!this.visionGoodSince) this.visionGoodSince = now;
           } else if (residFrac > 0.6) {
             this.visionGoodSince = 0;
           }
+
+          // AUTO-CALIBRATION: a steady, well-established lock pairs the
+          // mechanical pose that would CENTER the plane with the plane's
+          // true direction (no aim lead) — a free wizard-grade sample.
+          // Geometric altitude only; baro fallback is hundreds of feet off.
+          if (cfg.vision.autoCalibrate && steady && lt.hits >= 6 && elF >= 8 && elF < 72) {
+            const ac = this.current ? this.upstream.find(this.current.hex) : undefined;
+            if (ac && ac.altGeom != null && (ac.gs ?? 0) > 80 && (ac.seen ?? 99) < 3) {
+              this.autoCal.add({
+                panDeg: atFrame.panDeg + offAz / cfg.mount.panGain,
+                tiltDeg: atFrame.tiltDeg + offElDeg / cfg.mount.tiltGain,
+                azDeg: atFrame.truthAz,
+                elDeg: atFrame.truthEl,
+                t: now,
+              });
+            }
+          }
           this.recorder.write("vision", {
-            det, offAzDeg, offElDeg, residAz, residEl, steady,
+            det: o, offAzDeg: offAz, offElDeg, residAz, residEl, steady,
+            lockScore: sel?.score, lockHits: lt.hits,
             corrAz: this.corrAz, corrEl: this.corrEl,
           });
         } else {
-          this.recorder.write("vision", { det, offAzDeg, offElDeg });
+          this.recorder.write("vision", {
+            det: o, offAzDeg: offAz, offElDeg, lockScore: sel?.score, lockHits: lt.hits,
+          });
         }
       } else {
-        // No detection: let the correction bleed away.
+        // No fresh lock this frame: bleed the correction; the lock itself
+        // survives short droughts via the track table's grace window.
         this.corrAz *= 0.85;
         this.corrEl *= 0.85;
+        if (!lt) this.visionGoodSince = 0;
         if (this.lastDetection && now - this.lastDetection.t > 3000) {
           this.lastDetection = null;
         }

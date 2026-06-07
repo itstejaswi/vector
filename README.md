@@ -54,11 +54,18 @@ for your location and time. Tune everything from your phone.
   toggles, …) is live-tunable over your LAN and persists across reboots.
 - **Optional sky camera** — point a PTZ camera (VISCA-over-IP + RTSP) at the sky and
   Skylight **automatically films the planes it's projecting**: ADS-B-driven pointing
-  with latency-compensated lead prediction, an on-frame vision detector that locks the
-  plane to center, and a confidence-gated zoom ladder that punches in as the lock
-  holds. Includes a **TV dashboard** (`/tv.html`) with the live feed + radar inset, and
-  a full **debug UI** (`/tracker.html`) with jog pad, target table, and a star-capture
+  with latency-compensated lead prediction, a hybrid vision system that locks the plane
+  to center, and a confidence-gated zoom ladder that punches in as the lock holds.
+  Includes a **TV dashboard** (`/tv.html`) with the live feed + radar inset, and a full
+  **debug UI** (`/tracker.html`) with jog pad, target table, and a star-capture
   calibration wizard.
+- **Vision that knows a plane from a cloud** — the camera tracker fuses three signals:
+  a classical blob detector (distant specks) + a large-object detector (big overhead
+  planes), **track-before-detect** that picks the target by how it *moves* through the
+  world like ADS-B predicts (clouds are world-static and lose), and an **optional
+  neural airplane detector** (YOLOX-Nano ONNX, downloaded at setup) for a semantic
+  "is it an airplane?" confirmation. It also **continuously self-calibrates** the mount
+  from every locked pass, so the aim re-squares itself over time.
 - **Appliance-ready** — boots straight to a full-screen kiosk on a Raspberry Pi 5
   (dual-output: projector + TV dashboard).
 
@@ -128,6 +135,23 @@ display. Once it's running, push updates from your dev machine with:
 ```bash
 PI_HOST=skylight.local ./scripts/deploy-to-pi.sh
 ```
+
+### Optional: the neural airplane detector
+
+The camera tracker works out of the box with its classical + motion-tracking vision.
+For an extra semantic "is it an airplane?" signal (kills cloud locks, nails big
+overhead planes), download the optional ONNX model **on the machine with the camera**:
+
+```bash
+./scripts/fetch-vision-model.sh        # YOLOX-Nano, Apache-2.0, ~3.5 MB (not committed)
+sudo systemctl restart skylight-tracker
+# verify: the tracker state shows vision.net.ready == true
+```
+
+It's fully optional — if the model (or `onnxruntime-node`) is absent, the tracker runs
+classical-only with no errors. On a Pi 5 it adds ~0.8 to load average during a pass;
+turn it off with `tracker.vision.net.enabled = false` or run it less often with
+`tracker.vision.net.everyNTicks` if the Pi runs hot.
 
 ## Configuration
 
