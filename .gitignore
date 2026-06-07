@@ -23,3 +23,6 @@ core.*
 
 # downloaded vision models (fetched at setup, not committed)
 tracker/models/
+
+# local harness state
+.claude/
