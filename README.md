@@ -1,7 +1,7 @@
 <h1 align="center">Skylight</h1>
 
 <p align="center">
-  <em>Project the aircraft passing overhead onto your ceiling, in real time — an X-ray through the roof.</em>
+  <em>Project the aircraft passing overhead onto your ceiling, in real time - an X-ray through the roof.</em>
 </p>
 
 <p align="center">
@@ -23,81 +23,81 @@ https://github.com/user-attachments/assets/9256b0eb-cc27-4388-9a4f-0a6c05468304
 
 Skylight decodes ADS-B from a cheap RTL-SDR radio and renders the planes physically
 flying over you onto a ceiling-pointed projector. A jet you'd hear overhead glides
-across your ceiling at the same moment — labeled with its airline, type, and where it's
+across your ceiling at the same moment - labeled with its airline, type, and where it's
 headed. Pure-black background so the projector's rectangle disappears and only the
 aircraft (and stars) are lit.
 
-It also draws the **real sky** behind the planes — sun, moon, bright stars and
-constellations, and live **satellites including the ISS** — all at their true positions
+It also draws the **real sky** behind the planes - sun, moon, bright stars and
+constellations, and live **satellites including the ISS** - all at their true positions
 for your location and time. Tune everything from your phone.
 
 > Reference build is centered on **San Francisco International (SFO)**, but it works
-> anywhere — set your coordinates (and swap the runway data) and you're flying.
+> anywhere - set your coordinates (and swap the runway data) and you're flying.
 
 ## Features
 
 - **Real-time overhead aircraft** from a local RTL-SDR (sub-second), or from a free web
-  API with zero code changes — handy for trying it with no radio.
+  API with zero code changes - handy for trying it with no radio.
 - **Type-aware glyphs** in a luminous, swept-wing style: widebodies tower over regional
   jets, **helicopters spin their rotors**, turboprops and GA aircraft spin their props.
-- **Smooth motion** — interpolates the ~1 Hz fixes to 60 fps by rendering slightly in
+- **Smooth motion** - interpolates the ~1 Hz fixes to 60 fps by rendering slightly in
   the past and tweening between real positions (no teleporting).
 - **Comet trails**, altitude-graded color, and range rings + compass for orientation.
 - **The airport** (runways) drawn at its true position, so you watch departures and
   arrivals line up with the runway.
-- **Window to elsewhere** — each routed flight shows its destination **city, local time
+- **Window to elsewhere** - each routed flight shows its destination **city, local time
   there, and miles-to-go**, plus a faint great-circle arc toward where it's headed.
-- **Live sky layer** — sun, moon (with phase), bright stars + constellation lines, and
+- **Live sky layer** - sun, moon (with phase), bright stars + constellation lines, and
   **satellites / ISS** computed from TLEs. Scrub time forward/back from your phone, or
   jump straight to the next ISS pass.
-- **Phone control panel** — every setting (rotation, theme, palette, filters, sky
+- **Phone control panel** - every setting (rotation, theme, palette, filters, sky
   toggles, …) is live-tunable over your LAN and persists across reboots.
-- **Optional sky camera** — point a PTZ camera (VISCA-over-IP + RTSP) at the sky and
+- **Optional sky camera** - point a PTZ camera (VISCA-over-IP + RTSP) at the sky and
   Skylight **automatically films the planes it's projecting**: ADS-B-driven pointing
   with latency-compensated lead prediction, a hybrid vision system that locks the plane
   to center, and a confidence-gated zoom ladder that punches in as the lock holds.
   Includes a **TV dashboard** (`/tv.html`) with the live feed + radar inset, and a full
   **debug UI** (`/tracker.html`) with jog pad, target table, and a star-capture
   calibration wizard.
-- **Vision that knows a plane from a cloud** — the camera tracker fuses three signals:
+- **Vision that knows a plane from a cloud** - the camera tracker fuses three signals:
   a classical blob detector (distant specks) + a large-object detector (big overhead
   planes), **track-before-detect** that picks the target by how it *moves* through the
   world like ADS-B predicts (clouds are world-static and lose), and an **optional
   neural airplane detector** (YOLOX-Nano ONNX, downloaded at setup) for a semantic
   "is it an airplane?" confirmation. It also **continuously self-calibrates** the mount
   from every locked pass, so the aim re-squares itself over time.
-- **Appliance-ready** — boots straight to a full-screen kiosk on a Raspberry Pi 5
+- **Appliance-ready** - boots straight to a full-screen kiosk on a Raspberry Pi 5
   (dual-output: projector + TV dashboard).
 
 ## Hardware
 
 | Part | Suggested | Notes |
 |---|---|---|
-| Receiver | **RTL-SDR Blog V4 + dipole** | The included dipole is plenty — planes are nearly overhead. |
+| Receiver | **RTL-SDR Blog V4 + dipole** | The included dipole is plenty - planes are nearly overhead. |
 | Compute | **Raspberry Pi 5 (8 GB)** | Decode + render. Active cooling for 24/7. |
-| Projector | A 1080p projector pointed up | Laser (e.g. Optoma GT2100HDR) gives the deepest blacks, but it's overkill — see the budget tip below. |
+| Projector | A 1080p projector pointed up | Laser (e.g. Optoma GT2100HDR) gives the deepest blacks, but it's overkill - see the budget tip below. |
 | Display link | micro-HDMI → HDMI | The Pi 5 uses **micro**-HDMI (not mini). |
 | Mount | Rotating 1/4-20 stand, pointed up | Lower the stand for a bigger image; tape **+ a safety tether**. |
-| Sky camera *(optional)* | Any **VISCA-over-IP PTZ** with RTSP (e.g. a 4K NDI conference PTZ) | For the auto-filming tracker. **Clamp the base rigidly** — fast slews will walk an unclamped mount and ruin the aim calibration. |
+| Sky camera *(optional)* | Any **VISCA-over-IP PTZ** with RTSP (e.g. a 4K NDI conference PTZ) | For the auto-filming tracker. **Clamp the base rigidly** - fast slews will walk an unclamped mount and ruin the aim calibration. |
 
-> **💡 Budget tip — you don't need an expensive projector.** The pricey laser short-throw
+> **💡 Budget tip - you don't need an expensive projector.** The pricey laser short-throw
 > is only worth it if you want the image visible in a **lit** room. If you're happy viewing
 > it in a **dim/dark** room (the intended vibe), a cheap **native-1080p LED** projector like
 > the **[Yaber Buffalo Pro U9](https://www.projectorcentral.com/Yaber-Pro_U9.htm) (~$150)**
 > works great:
-> - **No short-throw needed** — from the floor under an ~8 ft ceiling, even a 1.35:1 throw
+> - **No short-throw needed** - from the floor under an ~8 ft ceiling, even a 1.35:1 throw
 >   gives a ~5.5 ft image.
-> - **Low brightness is fine** (even better) — the content is sparse-on-black, so 200–400
+> - **Low brightness is fine** (even better) - the content is sparse-on-black, so 200–400
 >   lumens in a dark room actually looks *deeper*.
 > - Just verify it's **native 1920×1080** (not "1080p supported"), has a **quiet fan**, and
 >   an **HDMI input that shows on power-on**.
 
 <p align="center">
   <img src="docs/setup.jpg" alt="The build: short-throw projector pointing up at the ceiling, RTL-SDR dipole antenna on the cabinet" width="320">
-  <br><em>The build — short-throw projector pointing up, RTL-SDR dipole on the cabinet.</em>
+  <br><em>The build - short-throw projector pointing up, RTL-SDR dipole on the cabinet.</em>
 </p>
 
-You don't need any of this to try it — see Quick start.
+You don't need any of this to try it - see Quick start.
 
 ## Quick start (local, no radio)
 
@@ -110,7 +110,7 @@ DATA_SOURCE=api pnpm dev
 
 - **Display:** http://localhost:5173/
 - **Control panel:** http://localhost:5173/control.html (or from your phone: `http://<your-ip>:5173/control.html`)
-- **Camera tracker debug UI:** http://localhost:5173/tracker.html — runs against a
+- **Camera tracker debug UI:** http://localhost:5173/tracker.html - runs against a
   built-in **camera simulator**, so the whole pointing pipeline (target selection,
   prediction, zoom, calibration) works with zero hardware.
 - **TV dashboard:** http://localhost:5173/tv.html
@@ -148,7 +148,7 @@ sudo systemctl restart skylight-tracker
 # verify: the tracker state shows vision.net.ready == true
 ```
 
-It's fully optional — if the model (or `onnxruntime-node`) is absent, the tracker runs
+It's fully optional - if the model (or `onnxruntime-node`) is absent, the tracker runs
 classical-only with no errors. On a Pi 5 it adds ~0.8 to load average during a pass;
 turn it off with `tracker.vision.net.enabled = false` or run it less often with
 `tracker.vision.net.everyNTicks` if the Pi runs hot.
@@ -161,14 +161,14 @@ fields:
 
 | | |
 |---|---|
-| `centerLat` / `centerLon` | **Your location** — where you're looking up. |
-| `radiusMiles` | How far out to show (default 3 — "what you could realistically see"). |
+| `centerLat` / `centerLon` | **Your location** - where you're looking up. |
+| `radiusMiles` | How far out to show (default 3 - "what you could realistically see"). |
 | `rotationDeg` / `mirrorX` | Calibration for the looking-up flip (tune against a real pass). |
 | `theme` | `ambient` · `telemetry` · `focus`. |
 | `showStars` / `showSun` / `showMoon` / `showSatellites` | Sky layer toggles. |
 | `skyTimeOffsetMin` | Scrub the sky clock for testing (0 = live). |
 | `showDestArc` / `showRouteDetail` | "Window to elsewhere". |
-| `tracker.*` | The whole camera subsystem — driver (`sim`/`visca`), camera IP, mount calibration, target selection criteria, prediction/pursuit tuning, zoom + vision behavior. All live-tunable from the tracker debug UI. |
+| `tracker.*` | The whole camera subsystem - driver (`sim`/`visca`), camera IP, mount calibration, target selection criteria, prediction/pursuit tuning, zoom + vision behavior. All live-tunable from the tracker debug UI. |
 
 **Using it somewhere other than SFO:** set `centerLat`/`centerLon`, and replace the
 runway geometry in [`web/src/display/airports.ts`](web/src/display/airports.ts) with your
@@ -194,7 +194,7 @@ To stop browsers on other origins from talking to the server (e.g. a tab on
 is rejected unless its `Host` header (and a WebSocket's `Origin` header)
 matches the allowlist.
 
-The defaults cover the documented topology — `localhost`, `127.0.0.1`,
+The defaults cover the documented topology - `localhost`, `127.0.0.1`,
 `[::1]`, `*.local`, and private LAN ranges (`10/8`, `192.168/16`,
 `172.16/12`, IPv6 ULA + link-local). If you publish Skylight on a public
 hostname or a tunnel, add it:
@@ -227,13 +227,13 @@ RTL-SDR ──USB──> dump1090-fa ──> aircraft.json (:8080)
                                                                     • TV dashboard + debug UI
 ```
 
-- **`shared/`** — TypeScript types, config schema, and pure geo/projection/pointing math
+- **`shared/`** - TypeScript types, config schema, and pure geo/projection/pointing math
   (ECEF az/el, mount model + calibration solver, alpha-beta trackers, FOV/zoom).
-- **`server/`** — polls the radio (primary) and API (supplement), enriches aircraft,
+- **`server/`** - polls the radio (primary) and API (supplement), enriches aircraft,
   proxies TLEs, persists config, and pushes everything over a WebSocket.
-- **`web/`** — Vite + React, four pages: the **display** (`<canvas>` renderer + celestial
+- **`web/`** - Vite + React, four pages: the **display** (`<canvas>` renderer + celestial
   engine), the mobile **control panel**, the **TV dashboard**, and the **tracker debug UI**.
-- **`tracker/`** — the camera brain: picks a target, predicts where it will be when the
+- **`tracker/`** - the camera brain: picks a target, predicts where it will be when the
   command actually bites (fix age + decode latency + motor latency), drives the PTZ with
   closed-loop velocity pursuit (sigma-delta speed dithering, soft limit guards,
   dead-reckoned pose), verifies the plane on-frame with a vision detector, and zooms in
@@ -255,4 +255,4 @@ RTL-SDR ──USB──> dump1090-fa ──> aircraft.json (:8080)
 
 ## License
 
-[MIT](LICENSE) — be excellent, point it at the sky.
+[MIT](LICENSE) - be excellent, point it at the sky.
