@@ -10,7 +10,7 @@ import type {
   Aircraft,
   SourceStatus,
 } from "@shared/index.js";
-import type { ConfigStore } from "./config-store.js";
+import { ConfigValidationError, type ConfigStore } from "./config-store.js";
 
 export interface HubDeps {
   store: ConfigStore;
@@ -39,12 +39,12 @@ export class Hub {
     this.send(ws, { type: "aircraft", now: snap.now, aircraft: snap.aircraft });
     this.send(ws, { type: "status", status: this.deps.getStatus() });
 
-    ws.on("message", (raw) => this.onMessage(raw.toString()));
+    ws.on("message", (raw) => this.onMessage(ws, raw.toString()));
     ws.on("close", () => this.clients.delete(ws));
     ws.on("error", () => this.clients.delete(ws));
   }
 
-  private onMessage(raw: string): void {
+  private onMessage(ws: WebSocket, raw: string): void {
     let msg: ClientMessage;
     try {
       msg = JSON.parse(raw) as ClientMessage;
@@ -53,10 +53,10 @@ export class Hub {
     }
     switch (msg.type) {
       case "patchConfig":
-        this.deps.store.patch(msg.patch); // store.subscribe broadcasts
+        this.writeConfig(ws, () => this.deps.store.patch(msg.patch)); // store.subscribe broadcasts
         break;
       case "setConfig":
-        this.deps.store.set(msg.config);
+        this.writeConfig(ws, () => this.deps.store.set(msg.config));
         break;
       case "resetConfig":
         this.deps.store.reset();
@@ -74,6 +74,18 @@ export class Hub {
   }
   broadcastConfig(config: Config): void {
     this.broadcast({ type: "config", config });
+  }
+
+  private writeConfig(ws: WebSocket, write: () => void): void {
+    try {
+      write();
+    } catch (err) {
+      if (err instanceof ConfigValidationError) {
+        this.send(ws, { type: "config", config: this.deps.store.get() });
+        return;
+      }
+      throw err;
+    }
   }
 
   private broadcast(msg: ServerMessage): void {
