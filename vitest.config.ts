@@ -6,6 +6,10 @@ export default defineConfig({
     alias: { "@shared": resolve(__dirname, "shared/src") },
   },
   test: {
-    include: ["shared/test/**/*.test.ts", "tracker/test/**/*.test.ts"],
+    include: [
+      "shared/test/**/*.test.ts",
+      "tracker/test/**/*.test.ts",
+      "server/test/**/*.test.ts",
+    ],
   },
 });

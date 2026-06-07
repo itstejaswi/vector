@@ -173,6 +173,22 @@ main {
   text-align: right;
 }
 
+/* Text input */
+.text-input {
+  width: clamp(180px, 48vw, 360px);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 8px 10px;
+  outline: none;
+}
+.text-input:focus {
+  border-color: var(--accent);
+}
+
 /* Segmented */
 .segmented {
   display: flex;

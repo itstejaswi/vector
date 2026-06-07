@@ -102,7 +102,6 @@ async function main(): Promise<void> {
 
   const poller = new Poller({
     source: SOURCE,
-    radioUrl: RADIO_URL,
     apiUrlTemplate: API_URL,
     pollMs: POLL_MS,
     supplementApi: SUPPLEMENT_API,

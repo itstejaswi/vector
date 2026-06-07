@@ -60,8 +60,6 @@ async function fetchJson(url: string): Promise<any> {
 
 export interface PollerOptions {
   source: DataSource;
-  /** dump1090 aircraft.json URL (radio source). */
-  radioUrl: string;
   /** airplanes.live point template, {lat}/{lon}/{r} are filled from config. */
   apiUrlTemplate: string;
   pollMs: number;
