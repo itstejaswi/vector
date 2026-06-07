@@ -82,7 +82,7 @@ export function Display() {
           <span>
             {state.status?.source ?? "—"} · {state.aircraft.length} ac ·{" "}
             rot {cfg.rotationDeg}° · mirror {cfg.mirrorX ? "X" : "–"}
-            {cfg.mirrorY ? "Y" : ""} · r {cfg.radiusMiles}mi · {cfg.theme}
+            {cfg.mirrorY ? "Y" : ""} · r {cfg.radiusMiles}mi · {cfg.projectionMode} · {cfg.theme}
           </span>
         </div>
       )}

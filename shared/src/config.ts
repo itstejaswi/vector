@@ -6,6 +6,8 @@
 export type Theme = "ambient" | "telemetry" | "focus";
 export type LabelDensity = "all" | "nearestN" | "nearestOnly";
 export type DataSource = "radio" | "api";
+/** map = flat ground plan; sky = look-up dome with altitude-aware motion. */
+export type ProjectionMode = "map" | "sky";
 
 export interface Palette {
   bg: string;
@@ -51,6 +53,8 @@ export interface Config {
   /** Rotate only the text labels (so they read right-side-up from where you
    *  lie), independent of the field rotation. Degrees. */
   labelRotationDeg: number;
+  /** How aircraft are placed on the ceiling (sky = realistic look-up geometry). */
+  projectionMode: ProjectionMode;
 
   // --- filtering ---
   minAltitudeFt: number;
@@ -121,6 +125,7 @@ export const DEFAULT_CONFIG: Config = {
   mirrorX: true,
   mirrorY: false,
   labelRotationDeg: 0,
+  projectionMode: "sky",
 
   minAltitudeFt: 100,
   maxAltitudeFt: 60000,
