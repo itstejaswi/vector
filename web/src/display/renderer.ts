@@ -17,6 +17,7 @@ import {
   deadReckon,
   rangeMeters,
   metersToMiles,
+  formatSpeed,
   EMERGENCY_SQUAWKS,
   type Aircraft,
   type Config,
@@ -542,7 +543,7 @@ export class Renderer {
         }
         ctx.fill();
         ctx.shadowBlur = 0;
-        if (mag < 0.3 && s.name) this.skyLabel(p, s.name, cfg, 0.5 * b);
+        if (mag < cfg.starLabelMagLimit && s.name) this.skyLabel(p, s.name, cfg, 0.5 * b);
       }
     }
 
@@ -568,7 +569,11 @@ export class Renderer {
         }
         ctx.fill();
         ctx.shadowBlur = 0;
-        if (iss) this.skyLabel({ x: p.x + 6, y: p.y - 6 }, "ISS", cfg, 0.9 * b, "#8CFFD6");
+        if (iss) {
+          this.skyLabel({ x: p.x + 6, y: p.y - 6 }, "ISS", cfg, 0.9 * b, "#8CFFD6");
+        } else if (cfg.satelliteLabels && sat.name) {
+          this.skyLabel({ x: p.x + 5, y: p.y - 5 }, sat.name, cfg, 0.6 * b);
+        }
       }
     }
   }
@@ -805,7 +810,7 @@ export class Renderer {
       if (ac.onGround) sub.push("GND");
       else if (alt != null) sub.push(`${alt.toLocaleString("en-US")} ft`);
     }
-    if (f.speed && ac.gs != null) sub.push(`${Math.round(ac.gs)} kt`);
+    if (f.speed && ac.gs != null) sub.push(formatSpeed(ac.gs, cfg.speedUnit));
     if (sub.length) out.push({ text: sub.join("   "), kind: "sub" });
 
     if (f.destination && ac.destination && routePlausible(ac, cfg)) {
@@ -945,7 +950,7 @@ export class Renderer {
       ac.airline,
       ac.typeName ?? ac.typeCode,
       ac.onGround ? "on ground" : dpAlt != null ? `${dpAlt.toLocaleString("en-US")} ft` : null,
-      ac.gs != null ? `${Math.round(ac.gs)} kt` : null,
+      ac.gs != null ? formatSpeed(ac.gs, cfg.speedUnit) : null,
       ac.origin && ac.destination && routePlausible(ac, cfg) ? `${ac.origin} → ${ac.destination}` : null,
     ].filter(Boolean);
     ctx.fillText(bits.join("    ·    "), x, y + 26);

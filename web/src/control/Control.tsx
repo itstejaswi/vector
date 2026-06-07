@@ -151,6 +151,15 @@ export function Control() {
                 onChange={(v) => set({ nearestN: v })} />
             </Row>
           )}
+          <Row label="Speed unit">
+            <Segmented value={cfg.speedUnit}
+              options={[
+                { value: "kt", label: "kt" },
+                { value: "mph", label: "mph" },
+                { value: "kmh", label: "km/h" },
+              ]}
+              onChange={(v) => set({ speedUnit: v })} />
+          </Row>
           <div className="chips">
             {(Object.keys(FIELD_LABELS) as (keyof ShowFields)[]).map((k) => (
               <button key={k}
@@ -229,9 +238,18 @@ export function Control() {
           <Row label="Satellites & ISS">
             <Toggle value={cfg.showSatellites} onChange={(v) => set({ showSatellites: v })} />
           </Row>
+          {cfg.showSatellites && (
+            <Row label="Satellite labels" hint="name every satellite">
+              <Toggle value={cfg.satelliteLabels} onChange={(v) => set({ satelliteLabels: v })} />
+            </Row>
+          )}
           <Row label="Star density">
             <Slider value={cfg.starMagLimit} min={1} max={4} step={0.1}
               onChange={(v) => set({ starMagLimit: v })} />
+          </Row>
+          <Row label="Star labels" hint="higher = more names">
+            <Slider value={cfg.starLabelMagLimit} min={0} max={3} step={0.1}
+              onChange={(v) => set({ starLabelMagLimit: v })} />
           </Row>
           <Row label="Sky time" hint={skyTimeLabel(cfg.skyTimeOffsetMin)}>
             <Slider value={cfg.skyTimeOffsetMin} min={-720} max={720} step={5} unit="m"
