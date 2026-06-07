@@ -6,20 +6,54 @@ import { dirname } from "node:path";
 import { DEFAULT_CONFIG, mergeConfig, type Config } from "@shared/index.js";
 
 type Listener = (config: Config) => void;
+const RADIO_URL_ERROR = "radioUrl must be an http or https URL";
+
+export class ConfigValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ConfigValidationError";
+  }
+}
+
+function validateRadioUrl(radioUrl: unknown): void {
+  if (typeof radioUrl !== "string") {
+    throw new ConfigValidationError(RADIO_URL_ERROR);
+  }
+
+  try {
+    const { protocol } = new URL(radioUrl);
+    if (protocol === "http:" || protocol === "https:") return;
+  } catch {
+    // Fall through to the common validation error.
+  }
+
+  throw new ConfigValidationError(RADIO_URL_ERROR);
+}
+
+function validateConfigWrite(config: Partial<Config>): void {
+  if (config && Object.prototype.hasOwnProperty.call(config, "radioUrl")) {
+    validateRadioUrl(config.radioUrl);
+  }
+}
 
 export class ConfigStore {
-  private config: Config = DEFAULT_CONFIG;
+  private config: Config;
   private listeners = new Set<Listener>();
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(private path: string) {}
+  constructor(
+    private path: string,
+    private defaults: Config = DEFAULT_CONFIG,
+  ) {
+    this.config = defaults;
+  }
 
   async load(): Promise<void> {
     try {
       const raw = await readFile(this.path, "utf8");
-      this.config = mergeConfig(DEFAULT_CONFIG, JSON.parse(raw) as Partial<Config>);
+      this.config = mergeConfig(this.defaults, JSON.parse(raw) as Partial<Config>);
     } catch {
-      this.config = DEFAULT_CONFIG; // first run
+      this.config = this.defaults; // first run
     }
   }
 
@@ -28,6 +62,7 @@ export class ConfigStore {
   }
 
   patch(patch: Partial<Config>): Config {
+    validateConfigWrite(patch);
     this.config = mergeConfig(this.config, patch);
     this.emit();
     this.scheduleSave();
@@ -35,14 +70,15 @@ export class ConfigStore {
   }
 
   set(config: Config): Config {
-    this.config = mergeConfig(DEFAULT_CONFIG, config);
+    validateConfigWrite(config);
+    this.config = mergeConfig(this.defaults, config);
     this.emit();
     this.scheduleSave();
     return this.config;
   }
 
   reset(): Config {
-    this.config = DEFAULT_CONFIG;
+    this.config = this.defaults;
     this.emit();
     this.scheduleSave();
     return this.config;

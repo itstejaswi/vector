@@ -5,10 +5,10 @@
 import { createServer } from "node:http";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import express from "express";
-import type { DataSource } from "@shared/index.js";
-import { ConfigStore } from "./config-store.js";
+import { DEFAULT_CONFIG, type Config, type DataSource } from "@shared/index.js";
+import { ConfigStore, ConfigValidationError } from "./config-store.js";
 import { RouteEnricher } from "./enrich/routes.js";
 import { Poller } from "./datasource.js";
 import { Hub } from "./hub.js";
@@ -31,10 +31,25 @@ const ROUTE_CACHE_HOURS = Number(process.env.ROUTE_CACHE_HOURS ?? 12);
 // When on radio, also poll the API and merge (keeps landing aircraft alive).
 const SUPPLEMENT_API = (process.env.SUPPLEMENT_API ?? "1") !== "0";
 const API_POLL_MS = Number(process.env.API_POLL_MS ?? 4000);
+const CONFIG_PATH = resolve(DATA_DIR, "config.json");
+const SERVER_DEFAULT_CONFIG: Config = { ...DEFAULT_CONFIG, radioUrl: RADIO_URL };
+
+function hasPersistedRadioUrl(path: string): boolean {
+  try {
+    const raw = JSON.parse(readFileSync(path, "utf8")) as Partial<Config>;
+    return typeof raw.radioUrl === "string";
+  } catch {
+    return false;
+  }
+}
 
 async function main(): Promise<void> {
-  const store = new ConfigStore(resolve(DATA_DIR, "config.json"));
+  const configHasRadioUrl = hasPersistedRadioUrl(CONFIG_PATH);
+  const store = new ConfigStore(CONFIG_PATH, SERVER_DEFAULT_CONFIG);
   await store.load();
+  if (!configHasRadioUrl && store.get().radioUrl !== RADIO_URL) {
+    store.patch({ radioUrl: RADIO_URL });
+  }
 
   const enricher = new RouteEnricher(
     resolve(DATA_DIR, "route-cache.json"),
@@ -101,7 +116,16 @@ async function main(): Promise<void> {
   // --- REST API (handy for debugging + non-WS clients) ---
   app.get("/api/health", (_req, res) => res.json({ ok: true }));
   app.get("/api/config", (_req, res) => res.json(store.get()));
-  app.post("/api/config", (req, res) => res.json(store.patch(req.body)));
+  app.post("/api/config", (req, res) => {
+    try {
+      res.json(store.patch(req.body));
+    } catch (err) {
+      if (err instanceof ConfigValidationError) {
+        return res.status(400).json({ error: err.message });
+      }
+      throw err;
+    }
+  });
   app.post("/api/config/reset", (_req, res) => res.json(store.reset()));
   app.get("/api/aircraft", (_req, res) => res.json(poller.getSnapshot()));
   app.get("/api/status", (_req, res) => res.json(poller.getStatus()));

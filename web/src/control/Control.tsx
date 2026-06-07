@@ -30,6 +30,7 @@ const FIELD_LABELS: Record<keyof ShowFields, string> = {
 export function Control() {
   const { state, conn } = useStream("control");
   const cfg = state.config;
+  const [radioUrl, setRadioUrl] = useState("");
 
   // ISS pass finder (for the Sky section).
   const [tles, setTles] = useState<Tle[]>([]);
@@ -43,6 +44,9 @@ export function Control() {
       on = false;
     };
   }, []);
+  useEffect(() => {
+    if (cfg) setRadioUrl(cfg.radioUrl);
+  }, [cfg]);
   const nextPass = useMemo(
     () => (tles.length && cfg ? nextISSPass(Date.now(), cfg.centerLat, cfg.centerLon, tles) : null),
     [tles, cfg?.centerLat, cfg?.centerLon],
@@ -58,8 +62,14 @@ export function Control() {
   }
 
   const set = (patch: Partial<Config>) => conn.patchConfig(patch);
+  const commitRadioUrl = () => {
+    const value = radioUrl.trim();
+    if (value !== radioUrl) setRadioUrl(value);
+    if (value !== cfg.radioUrl) set({ radioUrl: value });
+  };
   const setField = (k: keyof ShowFields, v: boolean) =>
     conn.patchConfig({ showFields: { ...cfg.showFields, [k]: v } });
+  const statusMessage = state.status?.message ? ` · ${state.status.message}` : "";
 
   return (
     <div className="control">
@@ -69,11 +79,45 @@ export function Control() {
           Ceiling Tracker
         </div>
         <div className="stat">
-          {state.status?.source ?? "—"} · {state.aircraft.length} overhead
+          {state.status?.source ?? "—"} · {state.aircraft.length} overhead{statusMessage}
         </div>
       </header>
 
       <main>
+        <Section title="Source">
+          <Row label="Radio URL" hint="dump1090 aircraft.json">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                commitRadioUrl();
+                (e.currentTarget.elements.namedItem("radioUrl") as HTMLInputElement | null)?.blur();
+              }}
+            >
+              <input
+                name="radioUrl"
+                type="text"
+                inputMode="url"
+                value={radioUrl}
+                onChange={(e) => setRadioUrl(e.target.value)}
+                onBlur={commitRadioUrl}
+                aria-label="Radio aircraft JSON URL"
+                spellCheck={false}
+                style={{
+                  width: "clamp(180px, 48vw, 360px)",
+                  border: "1px solid var(--line)",
+                  borderRadius: 8,
+                  background: "var(--panel-2)",
+                  color: "var(--text)",
+                  fontFamily: "var(--mono)",
+                  fontSize: 12,
+                  padding: "8px 10px",
+                  outline: "none",
+                }}
+              />
+            </form>
+          </Row>
+        </Section>
+
         <Section title="Calibration">
           <Row label="Rotation" hint="align field to ceiling">
             <Slider value={cfg.rotationDeg} min={0} max={355} step={5} unit="°"

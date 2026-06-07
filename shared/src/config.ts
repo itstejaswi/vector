@@ -206,6 +206,10 @@ export interface Config {
   centerLon: number;
   radiusMiles: number;
 
+  // --- data source ---
+  /** dump1090/readsb aircraft.json URL for the radio source. */
+  radioUrl: string;
+
   // --- calibration (tune against a real overhead pass) ---
   /** Rotate the whole field, degrees. */
   rotationDeg: number;
@@ -284,6 +288,8 @@ export const DEFAULT_CONFIG: Config = {
   centerLat: 37.6213,
   centerLon: -122.379,
   radiusMiles: 3,
+
+  radioUrl: "http://localhost:8080/data/aircraft.json",
 
   rotationDeg: 0,
   mirrorX: true,

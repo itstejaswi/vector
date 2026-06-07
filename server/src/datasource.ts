@@ -161,7 +161,7 @@ export class Poller {
 
   private async fetchList(source: DataSource, now: number): Promise<Aircraft[] | null> {
     try {
-      const url = source === "radio" ? this.o.radioUrl : this.buildApiUrl();
+      const url = source === "radio" ? this.o.getConfig().radioUrl : this.buildApiUrl();
       const json = await fetchJson(url);
       const rawList: RawAircraft[] = json.aircraft ?? json.ac ?? [];
       const list: Aircraft[] = [];
