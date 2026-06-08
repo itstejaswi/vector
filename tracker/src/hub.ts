@@ -33,6 +33,29 @@ export class TrackerHub {
     private videoRec: VideoRecorder,
   ) {
     const app = express();
+    // The debug UI is served from :3000 but talks to this tracker on :3001 of
+    // the SAME host, so its fetch()es are cross-origin. Allow cross-port reads
+    // from the same hostname (covers prod :3000, dev :5173, and LAN-IP access)
+    // while still rejecting foreign origins; answer the CORS preflight.
+    app.use((req, res, next) => {
+      const origin = req.headers.origin;
+      if (origin) {
+        let sameHost = false;
+        try {
+          sameHost = new URL(origin).hostname === req.hostname;
+        } catch {
+          /* malformed Origin — treat as not allowed */
+        }
+        if (sameHost) {
+          res.setHeader("Access-Control-Allow-Origin", origin);
+          res.setHeader("Vary", "Origin");
+          res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+          res.setHeader("Access-Control-Allow-Headers", "content-type");
+        }
+      }
+      if (req.method === "OPTIONS") return res.sendStatus(204);
+      next();
+    });
     app.use(express.json());
 
     app.get("/api/tracker/health", (_req, res) => res.json({ ok: true }));
