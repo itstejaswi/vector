@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { Config, ShowFields } from "@shared/index.js";
+import type { Config, ShowFields, LocationProfile } from "@shared/index.js";
 import { formatLatLon } from "@shared/geo.js";
 import { useStream } from "../lib/useStream.js";
 import { nextISSPass, type Tle } from "../display/celestial.js";
@@ -86,6 +86,35 @@ export function Control() {
     }
   };
 
+  // --- saved location profiles (favorite airports) ---
+  const genId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  const atCurrent = (p: { lat: number; lon: number }) =>
+    Math.abs(p.lat - cfg.centerLat) < 1e-4 && Math.abs(p.lon - cfg.centerLon) < 1e-4;
+  const switchToProfile = (p: LocationProfile) =>
+    set({ centerLat: p.lat, centerLon: p.lon, radiusMiles: p.radiusMiles, locationName: p.name });
+  const saveCurrentProfile = () => {
+    const name = cfg.locationName?.trim() || formatLatLon(cfg.centerLat, cfg.centerLon);
+    const profile: LocationProfile = {
+      id: genId(),
+      name,
+      lat: cfg.centerLat,
+      lon: cfg.centerLon,
+      radiusMiles: cfg.radiusMiles,
+    };
+    // Replace any existing profile already saved at this spot.
+    const rest = cfg.locationProfiles.filter((p) => !atCurrent(p));
+    set({ locationProfiles: [...rest, profile] });
+  };
+  const removeProfile = (id: string) =>
+    set({ locationProfiles: cfg.locationProfiles.filter((p) => p.id !== id) });
+  const centerOnTraffic = () => {
+    const ac = state.aircraft.filter((a) => a.lat != null && a.lon != null);
+    if (!ac.length) return;
+    const lat = ac.reduce((s, a) => s + (a.lat as number), 0) / ac.length;
+    const lon = ac.reduce((s, a) => s + (a.lon as number), 0) / ac.length;
+    set({ centerLat: lat, centerLon: lon, locationName: "Traffic center" });
+  };
+
   const useCurrentLocation = () => {
     if (!navigator.geolocation) {
       setGeoErr("Geolocation not supported on this device");
@@ -152,6 +181,30 @@ export function Control() {
           </Row>
           {geoBusy && <Row label="" hint="resolving…"><span /></Row>}
           {geoErr && <Row label="" hint={geoErr}><span /></Row>}
+          <div className="chips">
+            {cfg.locationProfiles.map((pr) => (
+              <span key={pr.id} className={`profile-chip ${atCurrent(pr) ? "on" : ""}`}>
+                <button className="profile-name" onClick={() => switchToProfile(pr)}>
+                  {pr.name}
+                </button>
+                <button
+                  className="profile-del"
+                  aria-label={`Delete ${pr.name}`}
+                  onClick={() => removeProfile(pr.id)}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+            <button className="chip" onClick={saveCurrentProfile}>
+              + Save current
+            </button>
+            {state.aircraft.length > 0 && (
+              <button className="chip" onClick={centerOnTraffic}>
+                Center on traffic
+              </button>
+            )}
+          </div>
         </Section>
 
         <Section title="Source">

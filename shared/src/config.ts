@@ -38,6 +38,15 @@ export interface Fonts {
   mono: string;
 }
 
+/** A saved place you can jump the view to from the control panel. */
+export interface LocationProfile {
+  id: string;
+  name: string;
+  lat: number;
+  lon: number;
+  radiusMiles: number;
+}
+
 export interface ShowFields {
   airline: boolean;
   flight: boolean;
@@ -211,6 +220,8 @@ export interface Config {
   /** Human-readable place name for the current location (shown in the panel). */
   locationName: string;
   radiusMiles: number;
+  /** Saved places (airports/cities) switchable from the control panel. */
+  locationProfiles: LocationProfile[];
 
   // --- data source ---
   /** dump1090/readsb aircraft.json URL for the radio source. */
@@ -305,6 +316,7 @@ export const DEFAULT_CONFIG: Config = {
   centerLon: -122.379,
   locationName: "San Francisco International",
   radiusMiles: 3,
+  locationProfiles: [],
 
   radioUrl: "http://localhost:8080/data/aircraft.json",
 

@@ -34,3 +34,21 @@ describe("mergeTrackerConfig", () => {
     expect(persisted.tracker.vision.net).toEqual(DEFAULT_CONFIG.tracker.vision.net);
   });
 });
+
+describe("mergeConfig locationProfiles (#18)", () => {
+  const profile = { id: "a1", name: "LAX", lat: 33.94, lon: -118.4, radiusMiles: 5 };
+
+  it("persists saved profiles and replaces the array wholesale on patch", () => {
+    const withOne = mergeConfig(DEFAULT_CONFIG, { locationProfiles: [profile] });
+    expect(withOne.locationProfiles).toEqual([profile]);
+    // A later patch of the array replaces it (the client sends the full list).
+    const cleared = mergeConfig(withOne, { locationProfiles: [] });
+    expect(cleared.locationProfiles).toEqual([]);
+  });
+
+  it("keeps saved profiles when an unrelated field is patched", () => {
+    const base = mergeConfig(DEFAULT_CONFIG, { locationProfiles: [profile] });
+    const after = mergeConfig(base, { brightness: 0.5 });
+    expect(after.locationProfiles).toEqual([profile]);
+  });
+});
