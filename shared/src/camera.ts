@@ -219,6 +219,8 @@ export interface TrackerState {
   candidates: Candidate[];
   calibration: CalibrationState;
   recording: boolean;
+  /** Full-quality clip recorder state (separate from the JSONL telemetry one). */
+  videoRec: { recording: boolean; file?: string; startedAt?: number };
   video: {
     running: boolean;
     error?: string;

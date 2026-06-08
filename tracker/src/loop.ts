@@ -151,6 +151,11 @@ export class ControlLoop {
       running: false,
       gen: 0,
     }),
+    private videoRecStatus: () => {
+      recording: boolean;
+      file?: string;
+      startedAt?: number;
+    } = () => ({ recording: false }),
   ) {}
 
   // --- lifecycle ---
@@ -796,6 +801,7 @@ export class ControlLoop {
       candidates,
       calibration: this.calibration.state(cfg.site, now),
       recording: this.recorder.recording,
+      videoRec: this.videoRecStatus(),
       video: {
         ...this.video.status(),
         mseRunning: this.mseStatus().running,

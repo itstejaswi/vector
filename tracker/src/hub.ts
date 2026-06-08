@@ -14,6 +14,7 @@ import type { ControlLoop } from "./loop.js";
 import type { Recorder } from "./record.js";
 import type { Upstream } from "./upstream.js";
 import type { VideoStream } from "./video/stream.js";
+import type { VideoRecorder } from "./video/recorder.js";
 import { renderDebug } from "./vision/detect.js";
 
 const STATE_HZ = 10;
@@ -29,6 +30,7 @@ export class TrackerHub {
     private upstream: Upstream,
     private recorder: Recorder,
     private video: VideoStream,
+    private videoRec: VideoRecorder,
   ) {
     const app = express();
     app.use(express.json());
@@ -51,6 +53,24 @@ export class TrackerHub {
       renderDebug(frame)
         .then((img) => res.type("image/jpeg").send(img))
         .catch((err) => res.status(500).json({ error: String(err) }));
+    });
+
+    // --- full-quality clip recording ---
+    app.post("/api/record/video", (req, res) => {
+      if (req.body?.on) res.json(this.videoRec.start());
+      else {
+        this.videoRec.stop();
+        res.json(this.videoRec.status());
+      }
+    });
+    app.get("/api/recordings", (_req, res) => res.json(this.videoRec.list()));
+    app.get("/recordings/:name", (req, res) => {
+      const path = this.videoRec.resolve(req.params.name);
+      if (!path) return res.status(404).json({ error: "not found" });
+      res.download(path, req.params.name);
+    });
+    app.delete("/api/recordings/:name", (req, res) => {
+      res.json({ ok: this.videoRec.remove(req.params.name) });
     });
 
     this.server = createServer(app);

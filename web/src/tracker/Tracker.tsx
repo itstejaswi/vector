@@ -5,6 +5,7 @@ import { useTracker } from "./useTracker.js";
 import { CalibrationWizard } from "./components/CalibrationWizard.js";
 import { ConfigPanel } from "./components/ConfigPanel.js";
 import { JogPad } from "./components/JogPad.js";
+import { RecordPanel } from "./components/RecordPanel.js";
 import { SkyPolar } from "./components/SkyPolar.js";
 import { StatusBar } from "./components/StatusBar.js";
 import { TargetTable } from "./components/TargetTable.js";
@@ -32,6 +33,7 @@ export function Tracker() {
       <main className="layout">
         <section className="left">
           <VideoPane state={state} config={config} connected={stream.connected} />
+          <RecordPanel state={state} connected={stream.connected} />
           <div className="bottom-row">
             <JogPad conn={conn} />
             {state.mode === "calibrate" ? (

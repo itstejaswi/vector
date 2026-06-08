@@ -12,6 +12,7 @@ import { Recorder } from "./record.js";
 import { ReplayUpstream, WsUpstream, type Upstream } from "./upstream.js";
 import { Mp4Stream } from "./video/mse.js";
 import { VideoStream } from "./video/stream.js";
+import { VideoRecorder } from "./video/recorder.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -20,6 +21,7 @@ const HOST = process.env.TRACKER_HOST ?? "0.0.0.0";
 const SERVER_WS = process.env.SERVER_WS ?? "ws://localhost:3000/ws";
 const REPLAY = process.env.TRACKER_REPLAY;
 const SESSIONS_DIR = resolve(__dirname, "../data/sessions");
+const RECORDINGS_DIR = resolve(__dirname, "../data/recordings");
 
 function rtspUrl(template: string, ip: string): string {
   return template.replace("{ip}", ip);
@@ -76,6 +78,7 @@ async function main(): Promise<void> {
           // remuxed untouched.
           video.setUrl(rtspUrl(config.tracker.rtspSubUrl, config.tracker.cameraIp));
           mse.setUrl(rtspUrl(config.tracker.rtspUrl, config.tracker.cameraIp));
+          videoRec.setUrl(rtspUrl(config.tracker.rtspUrl, config.tracker.cameraIp));
           hub.broadcastConfig();
         },
       });
@@ -83,6 +86,7 @@ async function main(): Promise<void> {
   const initial = upstream.getConfig().tracker;
   const video = new VideoStream(rtspUrl(initial.rtspSubUrl, initial.cameraIp));
   const mse = new Mp4Stream(rtspUrl(initial.rtspUrl, initial.cameraIp));
+  const videoRec = new VideoRecorder(RECORDINGS_DIR, rtspUrl(initial.rtspUrl, initial.cameraIp));
 
   const loop = new ControlLoop(
     upstream,
@@ -91,9 +95,10 @@ async function main(): Promise<void> {
     video,
     swapDriver,
     () => mse.status(),
+    () => videoRec.status(),
   );
 
-  const hub = new TrackerHub(loop, upstream, recorder, video);
+  const hub = new TrackerHub(loop, upstream, recorder, video, videoRec);
 
   upstream.start();
   getDriver(); // instantiate per current config
@@ -127,6 +132,7 @@ async function main(): Promise<void> {
     shuttingDown = true;
     console.log(`[tracker] ${signal} — stopping motors and exiting`);
     loop.stop();
+    videoRec.stop(); // finalize an in-progress clip
     try {
       driver?.stop();
     } catch {

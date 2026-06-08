@@ -68,6 +68,86 @@ body {
 }
 .rec.on { color: var(--bad); border-color: var(--bad); }
 
+/* Clip recorder */
+.record-panel {
+  margin-top: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  padding: 8px 10px;
+}
+.record-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.rec-btn {
+  border: 1px solid var(--line);
+  background: none;
+  color: var(--text);
+  border-radius: 6px;
+  padding: 5px 12px;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.rec-btn.on {
+  color: #fff;
+  background: var(--bad);
+  border-color: var(--bad);
+}
+.rec-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.record-hint {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.record-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 150px;
+  overflow-y: auto;
+}
+.record-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.record-list a {
+  color: var(--accent);
+  text-decoration: none;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.record-list a:hover {
+  text-decoration: underline;
+}
+.record-list .rec-size {
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.record-list .rec-del {
+  border: none;
+  background: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 0 2px;
+}
+.record-list .rec-del:hover {
+  color: var(--bad);
+}
+
 .segmented { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
 .segment {
   background: none; border: 0; color: var(--text-dim); padding: 5px 11px;
