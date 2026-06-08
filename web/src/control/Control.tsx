@@ -91,6 +91,36 @@ export function Control() {
     }
   };
 
+  const useCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      setGeoErr("Geolocation not supported on this device");
+      return;
+    }
+    setGeoBusy(true);
+    setGeoErr(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        set({
+          centerLat: pos.coords.latitude,
+          centerLon: pos.coords.longitude,
+          locationName: "Current location",
+        });
+        setGeoBusy(false);
+      },
+      (err) => {
+        setGeoBusy(false);
+        const msg =
+          err.code === err.PERMISSION_DENIED
+            ? "Location permission denied"
+            : err.code === err.TIMEOUT
+              ? "Location request timed out"
+              : "Location unavailable";
+        setGeoErr(msg);
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 60_000 },
+    );
+  };
+
   return (
     <div className="control">
       <header className="topbar">
@@ -106,13 +136,24 @@ export function Control() {
       <main>
         <Section title="Location">
           <Row label={cfg.locationName || "Location"} hint={fmtLatLon(cfg.centerLat, cfg.centerLon)}>
-            <TextInput
-              key={cfg.locationName}
-              value=""
-              placeholder="city, airport, or lat,lon"
-              ariaLabel="Change location"
-              onCommit={changeLocation}
-            />
+            <div className="loc-bar">
+              <TextInput
+                key={cfg.locationName}
+                value=""
+                placeholder="city, airport, or lat,lon"
+                ariaLabel="Change location"
+                onCommit={changeLocation}
+              />
+              <button
+                type="button"
+                className="loc-btn"
+                aria-label="Use current location"
+                disabled={geoBusy}
+                onClick={useCurrentLocation}
+              >
+                Current
+              </button>
+            </div>
           </Row>
           {geoBusy && <Row label="" hint="resolving…"><span /></Row>}
           {geoErr && <Row label="" hint={geoErr}><span /></Row>}
