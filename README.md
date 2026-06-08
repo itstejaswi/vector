@@ -47,9 +47,9 @@ for your location and time. Tune everything from your phone.
   arrivals line up with the runway.
 - **Window to elsewhere** - each routed flight shows its destination **city, local time
   there, and miles-to-go**, plus a faint great-circle arc toward where it's headed.
-- **Live sky layer** - sun, moon (with phase), bright stars + constellation lines, and
-  **satellites / ISS** computed from TLEs. Scrub time forward/back from your phone, or
-  jump straight to the next ISS pass.
+- **Live sky layer** - sun, moon (with phase), bright stars + constellation lines,
+  **naked-eye planets**, and **satellites / ISS** computed from TLEs. Scrub time
+  forward/back from your phone, or jump straight to the next ISS pass.
 - **Phone control panel** - every setting (rotation, theme, palette, filters, sky
   toggles, …) is live-tunable over your LAN and persists across reboots.
 - **Optional sky camera** - point a PTZ camera (VISCA-over-IP + RTSP) at the sky and
@@ -206,10 +206,11 @@ fields:
 |---|---|
 | `centerLat` / `centerLon` | **Your location** - where you're looking up. Editable from the panel's **Location** section (type a city, airport code, or `lat,lon`). |
 | `locationName` | Display name for the current location, shown in the control panel. |
+| `locationProfiles` | Saved places (favorite airports). Switch between them from the panel's **Location** section - tap **Save current** to store the active spot, then a chip to jump back to it. |
 | `radiusMiles` | How far out to show (default 3 - "what you could realistically see"). |
 | `rotationDeg` / `mirrorX` | Calibration for the looking-up flip (tune against a real pass). |
 | `theme` | `ambient` · `telemetry` · `focus`. |
-| `showStars` / `showSun` / `showMoon` / `showSatellites` | Sky layer toggles. |
+| `showStars` / `showSun` / `showMoon` / `showSatellites` / `showPlanets` | Sky layer toggles. Planets (Venus, Jupiter, Mars, Saturn, Mercury) are drawn at their true positions, sized by brightness and labelled - so the display stays alive even with no traffic. |
 | `skyTimeOffsetMin` | Scrub the sky clock for testing (0 = live). |
 | `showDestArc` / `showRouteDetail` | "Window to elsewhere". |
 | `tracker.*` | The whole camera subsystem - driver (`sim`/`visca`), camera IP, mount calibration, target selection criteria, prediction/pursuit tuning, zoom + vision behavior. All live-tunable from the tracker debug UI. |
