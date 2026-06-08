@@ -18,7 +18,7 @@ const satellite: typeof satelliteNS =
 const D2R = Math.PI / 180;
 const R2D = 180 / Math.PI;
 
-export type SkyKind = "sun" | "moon" | "star" | "satellite" | "iss";
+export type SkyKind = "sun" | "moon" | "star" | "satellite" | "iss" | "planet";
 
 export interface SkyBody {
   kind: SkyKind;
@@ -42,6 +42,7 @@ export interface Sky {
   moon?: SkyBody;
   stars: SkyBody[];
   sats: SkyBody[];
+  planets: SkyBody[];
 }
 
 export interface SkyOpts {
@@ -49,9 +50,19 @@ export interface SkyOpts {
   moon: boolean;
   stars: boolean;
   satellites: boolean;
+  planets: boolean;
   magLimit: number;
   tles: Tle[];
 }
+
+/** Naked-eye planets, in rough order of how often they're a standout. */
+const PLANETS: { body: AstronomyNS.Body; name: string }[] = [
+  { body: Astronomy.Body.Venus, name: "Venus" },
+  { body: Astronomy.Body.Jupiter, name: "Jupiter" },
+  { body: Astronomy.Body.Mars, name: "Mars" },
+  { body: Astronomy.Body.Saturn, name: "Saturn" },
+  { body: Astronomy.Body.Mercury, name: "Mercury" },
+];
 
 function norm360(d: number): number {
   return ((d % 360) + 360) % 360;
@@ -98,7 +109,7 @@ function getSatrec(tle: Tle): satelliteNS.SatRec | null {
 
 export function computeSky(date: Date, latDeg: number, lonDeg: number, o: SkyOpts): Sky {
   const observer = new Astronomy.Observer(latDeg, lonDeg, 0);
-  const sky: Sky = { stars: [], sats: [] };
+  const sky: Sky = { stars: [], sats: [], planets: [] };
 
   if (o.sun) {
     const { az, alt } = bodyAltAz(Astronomy.Body.Sun, date, observer);
@@ -143,6 +154,20 @@ export function computeSky(date: Date, latDeg: number, lonDeg: number, o: SkyOpt
         az: norm360(look.azimuth * R2D),
         alt,
       });
+    }
+  }
+  if (o.planets) {
+    for (const p of PLANETS) {
+      const { az, alt } = bodyAltAz(p.body, date, observer);
+      if (alt < -2) continue; // below horizon
+      // True apparent visual magnitude drives the on-screen size/glow.
+      let mag = 0;
+      try {
+        mag = Astronomy.Illumination(p.body, date).mag;
+      } catch {
+        // Illumination can throw for a body at an unusual geometry; skip mag.
+      }
+      sky.planets.push({ kind: "planet", name: p.name, az, alt, mag });
     }
   }
   return sky;

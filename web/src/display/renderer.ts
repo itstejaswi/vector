@@ -46,6 +46,15 @@ import { ASTERISMS } from "./stars.js";
 /** How far in the past we render, ms. Just over the ~1 Hz fix interval. */
 const RENDER_DELAY_MS = 1150;
 
+/** Characteristic tints for the naked-eye planets, as "r,g,b". */
+const PLANET_COLORS: Record<string, string> = {
+  Venus: "255,244,214",
+  Jupiter: "245,226,184",
+  Mars: "232,131,90",
+  Saturn: "232,217,160",
+  Mercury: "200,192,176",
+};
+
 interface Sample {
   t: number; // performance.now() at arrival
   m: Meters;
@@ -125,7 +134,7 @@ export class Renderer {
 
   // Sky layer state.
   private tles: Tle[] = [];
-  private sky: Sky = { stars: [], sats: [] };
+  private sky: Sky = { stars: [], sats: [], planets: [] };
   private skyComputedAt = 0;
   private skyOffsetUsed = NaN;
 
@@ -567,9 +576,10 @@ export class Renderer {
 
   // --- sky layer (sun / moon / stars / satellites) ---
   private updateSky(cfg: Config, now: number): void {
-    const want = cfg.showStars || cfg.showSun || cfg.showMoon || cfg.showSatellites;
+    const want =
+      cfg.showStars || cfg.showSun || cfg.showMoon || cfg.showSatellites || cfg.showPlanets;
     if (!want) {
-      this.sky = { stars: [], sats: [] };
+      this.sky = { stars: [], sats: [], planets: [] };
       return;
     }
     if (now - this.skyComputedAt < 300 && this.skyOffsetUsed === cfg.skyTimeOffsetMin) return;
@@ -581,6 +591,7 @@ export class Renderer {
       moon: cfg.showMoon,
       stars: cfg.showStars,
       satellites: cfg.showSatellites,
+      planets: cfg.showPlanets,
       magLimit: cfg.starMagLimit,
       tles: this.tles,
     });
@@ -642,6 +653,27 @@ export class Renderer {
     }
     if (cfg.showSun && this.sky.sun && this.sky.sun.alt > -2) {
       this.drawSun(this.projectSky(this.sky.sun.az, this.sky.sun.alt, cfg, proj), b);
+    }
+    if (cfg.showPlanets && this.sky.planets.length) {
+      for (const pl of this.sky.planets) {
+        const p = this.projectSky(pl.az, pl.alt, cfg, proj);
+        const mag = pl.mag ?? 1;
+        // Brighter planets (lower magnitude) read larger, with a soft glow.
+        const size = Math.max(1.6, Math.min(4, 3 - mag * 0.5));
+        const col = PLANET_COLORS[pl.name ?? ""] ?? "230,224,205";
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, size, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${col},${0.95 * b})`;
+        if (mag < 0.5) {
+          ctx.shadowColor = `rgba(${col},${b})`;
+          ctx.shadowBlur = size * 2.5;
+        }
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        if (pl.name) {
+          this.skyLabel({ x: p.x + 6, y: p.y - 6 }, pl.name, cfg, 0.7 * b, `rgb(${col})`);
+        }
+      }
     }
     if (cfg.showSatellites && this.sky.sats.length) {
       for (const sat of this.sky.sats) {

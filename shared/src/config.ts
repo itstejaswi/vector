@@ -279,6 +279,8 @@ export interface Config {
   showSatellites: boolean; // includes the ISS
   /** Label non-ISS satellites with their names (the ISS is always labelled). */
   satelliteLabels: boolean;
+  /** Draw the naked-eye planets (Venus, Jupiter, Mars, Saturn, Mercury). */
+  showPlanets: boolean;
   /** Faintest star magnitude to draw (higher = more stars). */
   starMagLimit: number;
   /** Faintest star magnitude to label with its name (higher = more names). */
@@ -367,6 +369,7 @@ export const DEFAULT_CONFIG: Config = {
   showMoon: true,
   showSatellites: true,
   satelliteLabels: false,
+  showPlanets: true,
   starMagLimit: 2.6,
   starLabelMagLimit: 0.3,
   skyTimeOffsetMin: 0,

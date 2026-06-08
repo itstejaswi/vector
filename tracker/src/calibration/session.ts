@@ -150,6 +150,7 @@ export function visibleBodies(
     moon: true,
     stars: true,
     satellites: false,
+    planets: false,
     magLimit: VISIBLE_MAG_LIMIT,
     tles: [],
   });
