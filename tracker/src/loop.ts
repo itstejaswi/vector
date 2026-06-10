@@ -638,6 +638,23 @@ export class ControlLoop {
         // integrator instead of accumulating against a motionless camera.
         if (panRate === 0) this.panRateI *= 0.9;
         if (tiltRate === 0) this.tiltRateI *= 0.9;
+        // Keep the sweep CONTINUOUS. Measured: while a plane is crossing, the
+        // reactive terms (P on the noisy dead-reckoned pose) and the deadband
+        // periodically STOP and even REVERSE the axis — the ~1 Hz stop-go you
+        // see. The plane's motion is monotonic, so the camera's should be too:
+        // when the feedforward rate is clearly in one direction, floor the
+        // command at it (no stopping or reversing). P/I may still ADD to catch
+        // up; they just can't kill the glide. Slow/near-still targets (tiny
+        // feedforward) fall through to the normal deadband and can rest.
+        const minSweep = cfg.predict.minSweepDps ?? 0;
+        if (minSweep > 0) {
+          const ffPan = this.azTracker.rate / cfg.mount.panGain;
+          const ffTilt = this.elTracker.rate / cfg.mount.tiltGain;
+          if (ffPan > minSweep) panRate = Math.max(panRate, ffPan * 0.9);
+          else if (ffPan < -minSweep) panRate = Math.min(panRate, ffPan * 0.9);
+          if (ffTilt > minSweep) tiltRate = Math.max(tiltRate, ffTilt * 0.9);
+          else if (ffTilt < -minSweep) tiltRate = Math.min(tiltRate, ffTilt * 0.9);
+        }
         // Jerk limit: cap how fast the COMMANDED velocity may change, turning
         // any residual step into a brief smooth ramp ("one smooth movement").
         // Resting (rate 0 from deadband) is exempt so it can still stop

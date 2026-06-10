@@ -122,6 +122,13 @@ export interface TrackerConfig {
      * spikes; 0 = off.
      */
     maxAccelDps2: number;
+    /**
+     * Keep the sweep continuous: when the feedforward (predicted plane) rate
+     * exceeds this many deg/s, the drive is floored at it so the reactive P/I
+     * and deadband can't STOP or REVERSE a moving axis (the ~1 Hz stop-go).
+     * Below it, near-still targets rest normally. 0 = off.
+     */
+    minSweepDps: number;
   };
   zoom: {
     auto: boolean;
@@ -444,6 +451,7 @@ export const DEFAULT_CONFIG: Config = {
       posSmoothing: 0.7,
       errSmoothing: 0.5,
       maxAccelDps2: 80,
+      minSweepDps: 0.6,
     },
     zoom: {
       auto: true,
