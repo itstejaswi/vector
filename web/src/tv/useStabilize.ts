@@ -32,7 +32,7 @@ export function useStabilize(
   const ease = opts.ease ?? 0.22;
   const detRef = useRef(detection);
   detRef.current = detection;
-  const cur = useRef({ x: 0, y: 0 });
+  const cur = useRef({ x: 0, y: 0, z: 1 });
 
   useEffect(() => {
     const v = videoRef.current;
@@ -40,15 +40,20 @@ export function useStabilize(
       if (v) v.style.transform = "";
       return;
     }
-    const maxShift = 0.5 - 0.5 / zoom; // overscan headroom
     let raf = 0;
     const tick = () => {
       const d = detRef.current;
+      const tracking = !!d && d.ageMs < 1500;
+      // Zoom in only while tracking; relax to full view (scale 1, no shift)
+      // when there's no plane, so idle isn't permanently cropped.
+      const targetZ = tracking ? zoom : 1;
+      cur.current.z += (targetZ - cur.current.z) * ease;
+      const maxShift = Math.max(0, 0.5 - 0.5 / cur.current.z); // current overscan
       let tx = 0;
       let ty = 0;
-      if (d && d.ageMs < 1500) {
-        tx = Math.max(-maxShift, Math.min(maxShift, 0.5 - d.cx));
-        ty = Math.max(-maxShift, Math.min(maxShift, 0.5 - d.cy));
+      if (tracking) {
+        tx = Math.max(-maxShift, Math.min(maxShift, 0.5 - d!.cx));
+        ty = Math.max(-maxShift, Math.min(maxShift, 0.5 - d!.cy));
       }
       cur.current.x += (tx - cur.current.x) * ease;
       cur.current.y += (ty - cur.current.y) * ease;
@@ -56,7 +61,7 @@ export function useStabilize(
       if (el) {
         el.style.transformOrigin = "center center";
         el.style.transform =
-          `scale(${zoom}) translate(${(cur.current.x * 100).toFixed(3)}%, ${(cur.current.y * 100).toFixed(3)}%)`;
+          `scale(${cur.current.z.toFixed(4)}) translate(${(cur.current.x * 100).toFixed(3)}%, ${(cur.current.y * 100).toFixed(3)}%)`;
       }
       raf = requestAnimationFrame(tick);
     };
