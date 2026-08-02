@@ -94,6 +94,15 @@ button {
   outline: none;
 }
 
+/* Aircraft are painted here, above the map, so their propellers and rotors
+   can animate. Pointer events pass through to the map's own click handling. */
+.aircraft-canvas {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+
 /* ---------------- HUD shell ---------------- */
 
 .hud {

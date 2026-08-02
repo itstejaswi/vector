@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type maplibregl from "maplibre-gl";
 import type { Config } from "@shared/index.js";
 import { DEFAULT_CONFIG, MAX_RADIUS_MILES, MIN_RADIUS_MILES } from "@shared/index.js";
 import { useStream } from "../lib/useStream.js";
+import type { MotionModel } from "../lib/motion.js";
 import { GeoMapLayer } from "./GeoMapLayer.js";
+import { AircraftCanvas } from "./AircraftCanvas.js";
 import { CinematicOverlays } from "./CinematicOverlays.js";
 import { LocationBox } from "./LocationBox.js";
 
@@ -28,6 +31,18 @@ export function Display() {
 
   const [selectedHex, setSelectedHex] = useState<string | null>(null);
   const [centerVersion, setCenterVersion] = useState(0);
+  /** Shared render state, handed over once the map is ready. */
+  const [render, setRender] = useState<{
+    map: maplibregl.Map;
+    motion: MotionModel;
+    labelled: Set<string>;
+  } | null>(null);
+
+  const handleMapReady = useCallback(
+    (ctx: { map: maplibregl.Map; motion: MotionModel; labelled: Set<string> }) =>
+      setRender(ctx),
+    [],
+  );
 
   const selectedAircraft = useMemo(
     () =>
@@ -97,7 +112,19 @@ export function Display() {
         trails={state.trails}
         centerVersion={centerVersion}
         onClickAircraft={handleSelect}
+        onReady={handleMapReady}
       />
+
+      {render && (
+        <AircraftCanvas
+          map={render.map}
+          motion={render.motion}
+          labelled={render.labelled}
+          aircraft={state.aircraft}
+          selectedHex={selectedHex}
+          glyphSize={26}
+        />
+      )}
 
       <LocationBox
         locationName={cfg.locationName}

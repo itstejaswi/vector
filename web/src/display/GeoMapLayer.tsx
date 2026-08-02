@@ -23,6 +23,15 @@ interface Props {
   /** Bumped by the caller to force a re-centre animation. */
   centerVersion: number;
   onClickAircraft: (hex: string | null) => void;
+  /**
+   * Handed the map instance and shared render state once ready, so the
+   * aircraft canvas can sit above the map and stay locked to its camera.
+   */
+  onReady: (ctx: {
+    map: maplibregl.Map;
+    motion: MotionModel;
+    labelled: Set<string>;
+  }) => void;
 }
 
 const EMPTY: GeoJSON.FeatureCollection = { type: "FeatureCollection", features: [] };
@@ -65,16 +74,20 @@ export function GeoMapLayer({
   trails,
   centerVersion,
   onClickAircraft,
+  onReady,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const readyRef = useRef(false);
   /** Source updates that arrived before the style finished loading. */
   const pendingRef = useRef<Array<(m: maplibregl.Map) => void>>([]);
-  /** Dead-reckoning between polls, stepped by our own animation loop. */
+  /** Dead-reckoning between polls, stepped by the aircraft canvas. */
   const motionRef = useRef(new MotionModel());
-  /** Which aircraft get a callsign label this frame. */
+  /** Which aircraft get a callsign label. Mutated in place so the canvas,
+   *  which holds the same Set, always sees the current selection. */
   const labelledRef = useRef<Set<string>>(new Set());
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
 
   // Refs so map handlers always see current values without re-binding.
   const aircraftRef = useRef(aircraft);
@@ -261,88 +274,33 @@ export function GeoMapLayer({
       });
 
       // --- selection ring ---
-      map.addSource("selected-ac", { type: "geojson", data: EMPTY });
-      map.addLayer({
-        id: "selected-ring",
-        type: "circle",
-        source: "selected-ac",
-        paint: {
-          "circle-radius": 22,
-          "circle-color": "rgba(0,0,0,0)",
-          "circle-stroke-color": "#ffaa3d",
-          "circle-stroke-width": 1.6,
-          "circle-stroke-opacity": 0.9,
-        },
-      });
-
-      // --- aircraft ---
-      map.addSource("aircraft", { type: "geojson", data: EMPTY });
-      map.addLayer({
-        id: "aircraft-icon",
-        type: "symbol",
-        source: "aircraft",
-        layout: {
-          "icon-image": ["get", "icon"],
-          "icon-rotate": ["get", "track"],
-          "icon-rotation-alignment": "map",
-          "icon-allow-overlap": true,
-          "icon-ignore-placement": true,
-          "icon-size": ["case", ["get", "sel"], 1.15, 0.85],
-        },
-      });
-      map.addLayer({
-        id: "aircraft-vs",
-        type: "symbol",
-        source: "aircraft",
-        filter: ["!=", ["get", "vs"], ""],
-        layout: {
-          "text-field": ["get", "vs"],
-          "text-font": ["Open Sans Semibold"],
-          "text-size": 9,
-          "text-offset": [0.95, -0.85],
-          "text-allow-overlap": true,
-        },
-        paint: {
-          "text-color": ["get", "vsColor"],
-          "text-halo-color": "#000000",
-          "text-halo-width": 1.2,
-        },
-      });
-      map.addLayer({
-        id: "aircraft-label",
-        type: "symbol",
-        source: "aircraft",
-        filter: ["==", ["get", "lbl"], true],
-        layout: {
-          "text-field": ["get", "label"],
-          "text-font": ["Open Sans Regular"],
-          "text-size": 10.5,
-          "text-offset": [0, 1.5],
-          "text-optional": true,
-          "text-letter-spacing": 0.06,
-        },
-        paint: {
-          "text-color": "#e8dcc8",
-          "text-halo-color": "#000000",
-          "text-halo-width": 1.5,
-        },
-      });
+      // Aircraft themselves are drawn on a canvas above the map (see
+      // AircraftCanvas) so their propellers and rotors can actually spin;
+      // MapLibre symbol layers can only place static sprites.
 
       readyRef.current = true;
       // Flush anything that arrived while the style was still loading.
       const queued = pendingRef.current;
       pendingRef.current = [];
       for (const fn of queued) fn(map);
+
+      onReadyRef.current({
+        map,
+        motion: motionRef.current,
+        labelled: labelledRef.current,
+      });
     });
 
-    // Hit-test clicks against live aircraft positions.
+    // Hit-test clicks against the animated positions, so a click lands where
+    // the aircraft is actually drawn rather than at its last raw fix.
     map.on("click", (e) => {
-      const list = aircraftRef.current ?? [];
+      const motion = motionRef.current;
       let bestHex: string | null = null;
       let bestDist = Infinity;
-      for (const ac of list) {
-        if (ac.lat == null || ac.lon == null) continue;
-        const px = map.project([ac.lon, ac.lat]);
+      for (const ac of aircraftRef.current ?? []) {
+        const pos = motion.positionOf(ac.hex);
+        if (!pos) continue;
+        const px = map.project([pos.lon, pos.lat]);
         const d = Math.hypot(px.x - e.point.x, px.y - e.point.y);
         if (d < 30 && d < bestDist) {
           bestDist = d;
@@ -353,11 +311,12 @@ export function GeoMapLayer({
     });
 
     map.on("mousemove", (e) => {
-      const list = aircraftRef.current ?? [];
+      const motion = motionRef.current;
       let near = false;
-      for (const ac of list) {
-        if (ac.lat == null || ac.lon == null) continue;
-        const px = map.project([ac.lon, ac.lat]);
+      for (const ac of aircraftRef.current ?? []) {
+        const pos = motion.positionOf(ac.hex);
+        if (!pos) continue;
+        const px = map.project([pos.lon, pos.lat]);
         if (Math.hypot(px.x - e.point.x, px.y - e.point.y) < 30) {
           near = true;
           break;
@@ -513,7 +472,9 @@ export function GeoMapLayer({
 
     // Busy airspace turns a full label set into noise, so only the closest
     // few (plus the selection) get named; the rest are glyphs until picked.
-    const labelled = new Set<string>();
+    // Mutated in place: the canvas holds this same Set.
+    const labelled = labelledRef.current;
+    labelled.clear();
     aircraft
       .filter((ac) => ac.lat != null && ac.lon != null)
       .map((ac) => ({ hex: ac.hex, d: distSq(ac.lat!, ac.lon!, centerLat, centerLon) }))
@@ -521,77 +482,8 @@ export function GeoMapLayer({
       .slice(0, LABEL_LIMIT)
       .forEach((e) => labelled.add(e.hex));
     if (selectedAircraft) labelled.add(selectedAircraft.hex);
-    labelledRef.current = labelled;
   }, [aircraft, selectedAircraft?.hex, centerLat, centerLon]);
 
-  // Animate positions straight into the map source. Deliberately outside
-  // React's render cycle: setting state per frame would re-render the whole
-  // tree 60 times a second and stall the map.
-  useEffect(() => {
-    let raf = 0;
-
-    const frame = () => {
-      raf = requestAnimationFrame(frame);
-
-      const map = mapRef.current;
-      if (!map || !readyRef.current) return;
-      const src = map.getSource("aircraft") as maplibregl.GeoJSONSource | undefined;
-      if (!src) return;
-
-      const motion = motionRef.current;
-      motion.step(Date.now());
-
-      const labelled = labelledRef.current;
-      const selHex = selectedRef.current?.hex;
-      const features: GeoJSON.Feature[] = [];
-
-      for (const ac of aircraftRef.current) {
-        const pos = motion.positionOf(ac.hex);
-        if (!pos) continue;
-        const color = altitudeColor(ac);
-        features.push({
-          type: "Feature",
-          properties: {
-            hex: ac.hex,
-            track: ac.track ?? 0,
-            color,
-            icon: iconId(color),
-            label: (ac.flight || ac.hex).toUpperCase(),
-            lbl: labelled.has(ac.hex),
-            sel: ac.hex === selHex,
-            vs: verticalGlyph(ac),
-            vsColor: verticalColor(ac),
-          },
-          geometry: { type: "Point", coordinates: [pos.lon, pos.lat] },
-        });
-      }
-
-      src.setData({ type: "FeatureCollection", features });
-
-      // The selection ring rides along with the animated position.
-      const ringSrc = map.getSource("selected-ac") as maplibregl.GeoJSONSource | undefined;
-      if (ringSrc) {
-        const selPos = selHex ? motion.positionOf(selHex) : null;
-        ringSrc.setData(
-          selPos
-            ? {
-                type: "FeatureCollection",
-                features: [
-                  {
-                    type: "Feature",
-                    properties: {},
-                    geometry: { type: "Point", coordinates: [selPos.lon, selPos.lat] },
-                  },
-                ],
-              }
-            : EMPTY,
-        );
-      }
-    };
-
-    raf = requestAnimationFrame(frame);
-    return () => cancelAnimationFrame(raf);
-  }, []);
 
   // Route arc + endpoint pins for the selected flight.
   useEffect(() => {
@@ -693,19 +585,6 @@ function routeView(sel: Aircraft | null): boolean {
   const hasOrigin = sel.originLat != null || lookupAirport(sel.origin) != null;
   const hasDest = sel.destLat != null || lookupAirport(sel.destination) != null;
   return hasOrigin && hasDest;
-}
-
-/** Climb/descent marker - makes departures and arrivals readable at a glance. */
-function verticalGlyph(ac: Aircraft): string {
-  if (ac.onGround || ac.baroRate == null) return "";
-  if (ac.baroRate > 250) return "\u25B2"; // up triangle
-  if (ac.baroRate < -250) return "\u25BC"; // down triangle
-  return "";
-}
-
-function verticalColor(ac: Aircraft): string {
-  if (ac.baroRate == null) return "#ffaa3d";
-  return ac.baroRate > 0 ? "#5ce8a8" : "#ff9a6a";
 }
 
 /** Nose-up aircraft silhouette in a fixed colour, with a dark outline so it
