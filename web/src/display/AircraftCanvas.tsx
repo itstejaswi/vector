@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import type maplibregl from "maplibre-gl";
 import type { Aircraft } from "@shared/index.js";
 import { classifyGlyph, drawAircraftGlyph, GLYPH_SCALE } from "./aircraftGlyph.js";
+import { drawAirportBeacons } from "./airportBeacons.js";
 import type { MotionModel } from "../lib/motion.js";
 
 interface Props {
@@ -16,6 +17,8 @@ interface Props {
   labelled: Set<string>;
   /** Base glyph size in CSS pixels. */
   glyphSize: number;
+  /** Draw the airport beacon layer. */
+  showAirports: boolean;
 }
 
 /** Altitude bands, low to high, as RGB triples for the glyph painter. */
@@ -45,6 +48,7 @@ export function AircraftCanvas({
   selectedHex,
   labelled,
   glyphSize,
+  showAirports,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -53,10 +57,12 @@ export function AircraftCanvas({
   const selectedRef = useRef(selectedHex);
   const labelledRef = useRef(labelled);
   const sizeRef = useRef(glyphSize);
+  const showAirportsRef = useRef(showAirports);
   aircraftRef.current = aircraft;
   selectedRef.current = selectedHex;
   labelledRef.current = labelled;
   sizeRef.current = glyphSize;
+  showAirportsRef.current = showAirports;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -106,6 +112,11 @@ export function AircraftCanvas({
       const base = sizeRef.current;
       const viewW = canvas.clientWidth;
       const viewH = canvas.clientHeight;
+
+      // Airports first, so aircraft always fly over their beacons.
+      if (showAirportsRef.current) {
+        drawAirportBeacons(ctx, map, viewW, viewH, t);
+      }
 
       for (const ac of aircraftRef.current) {
         const pos = motion.positionOf(ac.hex);

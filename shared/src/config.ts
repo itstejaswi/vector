@@ -16,6 +16,8 @@ export interface Config {
   radiusMiles: number;
   /** Colour aircraft glyphs and trails by altitude band. */
   altitudeColor: boolean;
+  /** Draw beacons at known airports. */
+  showAirports: boolean;
   /** Unit for the speed shown on labels. */
   speedUnit: SpeedUnit;
 }
@@ -28,6 +30,7 @@ export const DEFAULT_CONFIG: Config = {
   locationName: "Delhi (DEL)",
   radiusMiles: 60,
   altitudeColor: true,
+  showAirports: true,
   speedUnit: "kmh",
 };
 

@@ -93,10 +93,13 @@ export function Display() {
       if (e.key === "Escape") setSelectedHex(null);
       if (e.key === "+" || e.key === "=") handleZoomIn();
       if (e.key === "-" || e.key === "_") handleZoomOut();
+      if (e.key === "a" || e.key === "A") {
+        conn.patchConfig({ showAirports: !configRef.current.showAirports });
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [handleZoomIn, handleZoomOut]);
+  }, [handleZoomIn, handleZoomOut, conn]);
 
   const cfg = state.config;
   if (!cfg) return <div className="boot">VECTOR</div>;
@@ -123,6 +126,7 @@ export function Display() {
           aircraft={state.aircraft}
           selectedHex={selectedHex}
           glyphSize={26}
+          showAirports={cfg.showAirports}
         />
       )}
 
