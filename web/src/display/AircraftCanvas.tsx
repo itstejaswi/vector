@@ -6,7 +6,7 @@ import { drawAirportBeacons } from "./airportBeacons.js";
 import type { MotionModel } from "../lib/motion.js";
 
 interface Props {
-  /** The map whose camera this canvas tracks. */
+  /** The map whose viewport this canvas tracks. */
   map: maplibregl.Map | null;
   /** Live aircraft list; positions come from the motion model, not from here. */
   aircraft: Aircraft[];
@@ -15,10 +15,25 @@ interface Props {
   selectedHex: string | null;
   /** Hex codes that should carry a callsign label. */
   labelled: Set<string>;
-  /** Base glyph size in CSS pixels. */
+  /** Base glyph size in CSS pixels, at the reference zoom. */
   glyphSize: number;
   /** Draw the airport beacon layer. */
   showAirports: boolean;
+}
+
+/**
+ * Glyph size relative to the base, per zoom level. Aircraft that look right
+ * over a single airport become an unreadable orange mass at country scale, so
+ * they shrink as you pull back.
+ */
+function scaleForZoom(zoom: number): number {
+  if (zoom >= 10) return 1.15;
+  if (zoom >= 8.5) return 1;
+  if (zoom >= 7) return 0.82;
+  if (zoom >= 6) return 0.68;
+  if (zoom >= 5) return 0.56;
+  if (zoom >= 4) return 0.46;
+  return 0.4;
 }
 
 /** Altitude bands, low to high, as RGB triples for the glyph painter. */
@@ -37,7 +52,7 @@ const GROUND_COLOR: [number, number, number] = [140, 140, 140];
  * with spinning propellers and rotors.
  *
  * MapLibre symbol layers can only place static sprites, so anything animated
- * has to be painted by us. The canvas sits above the map, matches its camera
+ * has to be painted by us. The canvas sits above the map, matches its viewport
  * every frame, and projects each aircraft through `map.project()` so the two
  * stay locked together while panning and zooming.
  */
@@ -109,7 +124,9 @@ export function AircraftCanvas({
       const t = (performance.now() - start) / 1000;
       const selected = selectedRef.current;
       const labels = labelledRef.current;
-      const base = sizeRef.current;
+      // Scale with zoom so a busy terminal area stays legible.
+      const zoomScale = scaleForZoom(map.getZoom());
+      const base = sizeRef.current * zoomScale;
       const viewW = canvas.clientWidth;
       const viewH = canvas.clientHeight;
 
@@ -117,6 +134,9 @@ export function AircraftCanvas({
       if (showAirportsRef.current) {
         drawAirportBeacons(ctx, map, viewW, viewH, t);
       }
+
+      // Painted label boxes, so a later label can skip a spot that's taken.
+      const labelBoxes: Array<[number, number, number, number]> = [];
 
       for (const ac of aircraftRef.current) {
         const pos = motion.positionOf(ac.hex);
@@ -150,7 +170,20 @@ export function AircraftCanvas({
         if (vs) drawVertical(ctx, px.x + size * 0.5, px.y - size * 0.42, vs);
 
         if (labels.has(ac.hex)) {
-          drawLabel(ctx, px.x, px.y + size * 0.62, (ac.flight || ac.hex).toUpperCase());
+          const text = (ac.flight || ac.hex).toUpperCase();
+          const ly = px.y + size * 0.62;
+          // Approximate the box: measureText per label per frame is costly.
+          const halfW = text.length * 3.1 + 2;
+          const box: [number, number, number, number] = [
+            px.x - halfW,
+            ly,
+            px.x + halfW,
+            ly + 11,
+          ];
+          if (!labelBoxes.some((b) => overlaps(b, box))) {
+            labelBoxes.push(box);
+            drawLabel(ctx, px.x, ly, text);
+          }
         }
       }
     };
@@ -262,6 +295,14 @@ function drawVertical(
   ctx.stroke();
   ctx.fill();
   ctx.restore();
+}
+
+/** Axis-aligned box overlap test, used to keep labels from colliding. */
+function overlaps(
+  a: [number, number, number, number],
+  b: [number, number, number, number],
+): boolean {
+  return !(a[2] < b[0] || a[0] > b[2] || a[3] < b[1] || a[1] > b[3]);
 }
 
 /** Cheap stable hash, used only to de-phase the propeller animations. */

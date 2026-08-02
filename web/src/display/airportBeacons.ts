@@ -48,7 +48,7 @@ const AIRPORTS: Airport[] = Object.entries(AIRPORT_COORDS).map(
 /**
  * Paint every airport in view onto the given context. Called from the
  * aircraft canvas's animation loop so the beacons share its frame budget and
- * stay in step with the map camera.
+ * stay in step with the map viewport.
  */
 export function drawAirportBeacons(
   ctx: CanvasRenderingContext2D,

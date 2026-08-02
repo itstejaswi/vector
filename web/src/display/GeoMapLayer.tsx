@@ -25,7 +25,7 @@ interface Props {
   onClickAircraft: (hex: string | null) => void;
   /**
    * Handed the map instance and shared render state once ready, so the
-   * aircraft canvas can sit above the map and stay locked to its camera.
+   * aircraft canvas can sit above the map and stay locked to its viewport.
    */
   onReady: (ctx: {
     map: maplibregl.Map;
@@ -57,8 +57,16 @@ const GROUND_COLOR = "#8b8b8b";
 const ICON_COLORS = [...ALT_COLORS.map(([, c]) => c), GROUND_COLOR];
 const iconId = (color: string) => `plane-${color.replace("#", "")}`;
 const PLANE_PX = 44;
-/** Only the closest N aircraft get a callsign label; more becomes noise. */
-const LABEL_LIMIT = 14;
+/**
+ * How many aircraft carry a callsign label, by zoom. Wide views are dense, so
+ * fewer labels; up close there's room to name most of what you can see.
+ */
+function labelLimitForZoom(zoom: number): number {
+  if (zoom >= 9) return 16;
+  if (zoom >= 7) return 10;
+  if (zoom >= 5.5) return 6;
+  return 4;
+}
 
 /**
  * The map: dark basemap, range ring, live aircraft, and the great-circle
@@ -473,13 +481,14 @@ export function GeoMapLayer({
     // Busy airspace turns a full label set into noise, so only the closest
     // few (plus the selection) get named; the rest are glyphs until picked.
     // Mutated in place: the canvas holds this same Set.
+    const limit = labelLimitForZoom(mapRef.current?.getZoom() ?? 8);
     const labelled = labelledRef.current;
     labelled.clear();
     aircraft
       .filter((ac) => ac.lat != null && ac.lon != null)
       .map((ac) => ({ hex: ac.hex, d: distSq(ac.lat!, ac.lon!, centerLat, centerLon) }))
       .sort((a, b) => a.d - b.d)
-      .slice(0, LABEL_LIMIT)
+      .slice(0, limit)
       .forEach((e) => labelled.add(e.hex));
     if (selectedAircraft) labelled.add(selectedAircraft.hex);
   }, [aircraft, selectedAircraft?.hex, centerLat, centerLon]);
