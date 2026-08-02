@@ -39,11 +39,19 @@ export function CinematicOverlays({
   onSelect,
 }: Props) {
   const [clock, setClock] = useState(() => new Date());
+  /** Mobile only: the flight card collapses to a summary bar until tapped. */
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     const t = setInterval(() => setClock(new Date()), 1000);
     return () => clearInterval(t);
   }, []);
+
+  // Collapse the sheet when the focused flight changes, so it doesn't stay
+  // open over the map after the nearest aircraft rotates away.
+  useEffect(() => {
+    setExpanded(false);
+  }, [selectedHex]);
 
   const selected = useMemo(
     () => (selectedHex ? aircraft.find((a) => a.hex === selectedHex) ?? null : null),
@@ -74,7 +82,7 @@ export function CinematicOverlays({
   const fixAge = now > 0 ? Math.max(0, Math.round((Date.now() - now) / 1000)) : null;
 
   return (
-    <div className="hud">
+    <div className={"hud" + (expanded ? " sheet-open" : "")}>
       <div className="hud-vignette" />
       <div className="hud-scanlines" />
       <span className="hud-bk hud-bk-tl" aria-hidden="true" />
@@ -108,59 +116,80 @@ export function CinematicOverlays({
 
       {/* ---------- flight card ---------- */}
       {focus && (
-        <section className="panel panel-flight">
-          <header className="panel-head">
-            <span className="panel-glyph">✈</span>
-            <span>FLIGHT INFO</span>
-            {isAuto ? (
-              <span className="panel-tag">NEAREST</span>
-            ) : (
-              <button
-                type="button"
-                className="panel-x"
-                onClick={onDeselect}
-                title="Clear selection"
-              >
-                ✕
-              </button>
-            )}
-          </header>
+        <section className={"panel panel-flight" + (expanded ? " expanded" : "")}>
+          {/* Summary bar: the whole card on mobile until you open it, and a
+              hidden element on desktop where there's room for everything. */}
+          <button
+            type="button"
+            className="fx-peek"
+            onClick={() => setExpanded((v) => !v)}
+            aria-expanded={expanded}
+          >
+            <span className="fx-peek-call">{(focus.flight || focus.hex).toUpperCase()}</span>
+            <span className="fx-peek-route">
+              {focus.origin && focus.destination
+                ? `${focus.origin} → ${focus.destination}`
+                : focus.typeCode || "—"}
+            </span>
+            <span className="fx-peek-chevron" aria-hidden="true">
+              {expanded ? "▾" : "▴"}
+            </span>
+          </button>
 
-          <div className="fx-call">
-            <span className="fx-call-id">{(focus.flight || focus.hex).toUpperCase()}</span>
-            {focus.airline && <span className="fx-call-airline">{focus.airline}</span>}
-          </div>
+          <div className="fx-body">
+            <header className="panel-head">
+              <span className="panel-glyph">✈</span>
+              <span>FLIGHT INFO</span>
+              {isAuto ? (
+                <span className="panel-tag">NEAREST</span>
+              ) : (
+                <button
+                  type="button"
+                  className="panel-x"
+                  onClick={onDeselect}
+                  title="Clear selection"
+                >
+                  ✕
+                </button>
+              )}
+            </header>
 
-          {focus.origin || focus.destination ? (
-            <div className="fx-route">
-              <Endpoint kind="DEPARTURE" code={focus.origin} city={focus.originName} />
-              <div className="fx-link">
-                <span className="fx-link-dot" />
-                <span className="fx-link-line" />
-                <span className="fx-link-plane">✈</span>
-                <span className="fx-link-line" />
-                <span className="fx-link-dot" />
+            <div className="fx-call">
+              <span className="fx-call-id">{(focus.flight || focus.hex).toUpperCase()}</span>
+              {focus.airline && <span className="fx-call-airline">{focus.airline}</span>}
+            </div>
+
+            {focus.origin || focus.destination ? (
+              <div className="fx-route">
+                <Endpoint kind="DEPARTURE" code={focus.origin} city={focus.originName} />
+                <div className="fx-link">
+                  <span className="fx-link-dot" />
+                  <span className="fx-link-line" />
+                  <span className="fx-link-plane">✈</span>
+                  <span className="fx-link-line" />
+                  <span className="fx-link-dot" />
+                </div>
+                <Endpoint kind="ARRIVAL" code={focus.destination} city={focus.destName} />
               </div>
-              <Endpoint kind="ARRIVAL" code={focus.destination} city={focus.destName} />
-            </div>
-          ) : (
-            <div className="fx-noroute">
-              <span className="fx-noroute-title">NO ROUTE FILED</span>
-              <span className="fx-noroute-sub">
-                {focus.registration
-                  ? `Reg ${focus.registration}`
-                  : "Route data unavailable for this callsign"}
-              </span>
-            </div>
-          )}
+            ) : (
+              <div className="fx-noroute">
+                <span className="fx-noroute-title">NO ROUTE FILED</span>
+                <span className="fx-noroute-sub">
+                  {focus.registration
+                    ? `Reg ${focus.registration}`
+                    : "Route data unavailable for this callsign"}
+                </span>
+              </div>
+            )}
 
-          <div className="fx-rows">
-            <Metric icon="◎" label="DISTANCE" value={routeDistance(focus)} />
-            <Metric icon="◷" label="TIME TO GO" value={timeToGo(focus)} />
-            <Metric icon="✈" label="AIRCRAFT" value={aircraftType(focus)} />
-            <Metric icon="▲" label="ALTITUDE" value={altitude(focus)} />
-            <Metric icon="»" label="SPEED" value={speed(focus)} />
-            <Metric icon="◈" label="STATUS" value={status(focus)} highlight />
+            <div className="fx-rows">
+              <Metric icon="◎" label="DISTANCE" value={routeDistance(focus)} />
+              <Metric icon="◷" label="TIME TO GO" value={timeToGo(focus)} />
+              <Metric icon="✈" label="AIRCRAFT" value={aircraftType(focus)} />
+              <Metric icon="▲" label="ALTITUDE" value={altitude(focus)} />
+              <Metric icon="»" label="SPEED" value={speed(focus)} />
+              <Metric icon="◈" label="STATUS" value={status(focus)} highlight />
+            </div>
           </div>
         </section>
       )}

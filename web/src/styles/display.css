@@ -458,6 +458,11 @@ button {
   transform: rotate(90deg);
 }
 
+/* The peek bar only exists on small screens; desktop shows the full card. */
+.fx-peek {
+  display: none;
+}
+
 .fx-rows {
   padding: 8px 0 10px;
   border-top: 0.5px solid var(--hairline);
@@ -988,35 +993,141 @@ button {
   }
 }
 
+/* ---------------- small screens ---------------- */
+
 @media (max-width: 640px) {
   .hud-rail,
-  .hud-bk {
+  .hud-bk,
+  .hud-scanlines {
     display: none;
   }
+
+  /* The card becomes a bottom sheet: a compact summary bar by default, so the
+     map keeps the screen, expanding to full detail only when tapped. */
   .panel-flight {
-    left: 12px;
-    right: 12px;
+    left: 8px;
+    right: 8px;
     width: auto;
     top: auto;
-    bottom: 54px;
+    bottom: 8px;
+    border-radius: 16px;
+    /* Never take more than half the screen, even when open. */
+    max-height: 52vh;
+    display: flex;
+    flex-direction: column;
   }
+
+  .fx-peek {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 13px 16px;
+    background: none;
+    border: 0;
+    color: var(--text);
+    text-align: left;
+    cursor: pointer;
+    /* Comfortable thumb target. */
+    min-height: 48px;
+  }
+
+  .fx-peek-call {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .fx-peek-route {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--amber);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .fx-peek-chevron {
+    font-size: 10px;
+    color: var(--text-3);
+  }
+
+  /* Collapsed by default; the peek bar is the whole card. */
+  .fx-body {
+    display: none;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .panel-flight.expanded .fx-body {
+    display: block;
+    border-top: 0.5px solid var(--hairline);
+  }
+
+  /* The peek bar already names the flight, so the header and the repeated
+     callsign are redundant once open. */
+  .panel-flight.expanded .panel-head,
+  .panel-flight.expanded .fx-call {
+    display: none;
+  }
+
+  .fx-route {
+    padding: 14px 12px 12px;
+  }
+
+  .fx-end-code {
+    font-size: 26px;
+  }
+
+  .fx-end-city {
+    font-size: 10.5px;
+  }
+
   .loc-box {
-    right: 12px;
-    left: 12px;
+    top: 10px;
+    left: 10px;
+    right: 10px;
     width: auto;
   }
+
+  .loc-field {
+    height: 44px;
+  }
+
+  .loc-current {
+    display: none;
+  }
+
+  /* Sit clear of the collapsed sheet. */
   .hud-zoom {
-    right: 12px;
-    bottom: auto;
-    top: 116px;
+    right: 10px;
+    bottom: 74px;
+    transition: bottom 0.25s var(--ease);
   }
+
+  /* Ride up above the sheet when it opens, rather than sitting on top of it. */
+  .hud.sheet-open .hud-zoom {
+    bottom: calc(52vh + 18px);
+  }
+
+  .hud-zoom button {
+    width: 44px;
+    height: 44px;
+  }
+
+  /* The pill would collide with the sheet; the README carries the credit. */
   .hud-credit {
-    bottom: 12px;
-    font-size: 10px;
-    padding: 6px 12px;
+    display: none;
   }
-  .fx-end-code {
-    font-size: 28px;
+}
+
+/* Landscape phones are short: keep the sheet shallower still. */
+@media (max-width: 900px) and (max-height: 480px) {
+  .panel-flight {
+    max-height: 70vh;
+  }
+  .hud-zoom {
+    bottom: 68px;
   }
 }
 
