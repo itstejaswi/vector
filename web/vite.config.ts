@@ -3,36 +3,32 @@ import react from "@vitejs/plugin-react";
 import { resolve } from "node:path";
 
 const SHARED = resolve(__dirname, "../shared/src");
-const SERVER = process.env.SERVER_URL ?? "http://localhost:3000";
-const TRACKER = process.env.TRACKER_URL ?? "http://localhost:3001";
+
+// GitHub Pages serves project sites from /<repo>/, so the base path has to
+// match. Set BASE_PATH in CI; local dev and user/org pages use "/".
+const BASE = process.env.BASE_PATH ?? "/";
 
 export default defineConfig({
+  base: BASE,
   plugins: [react()],
   resolve: {
     alias: { "@shared": SHARED },
   },
   server: {
-    host: true, // expose dev server on LAN too
+    host: true,
     fs: { allow: [resolve(__dirname, ".."), SHARED] },
-    proxy: {
-      // tracker first: more specific prefixes win over the bare /api below
-      "/api/tracker": { target: TRACKER, changeOrigin: true },
-      "/tracker-ws": { target: TRACKER, ws: true, changeOrigin: true },
-      "/video": { target: TRACKER, changeOrigin: true },
-      "/frame.jpg": { target: TRACKER, changeOrigin: true },
-      "/api": { target: SERVER, changeOrigin: true },
-      "/ws": { target: SERVER, ws: true, changeOrigin: true },
-    },
   },
   build: {
     outDir: "dist",
     emptyOutDir: true,
+    // MapLibre is large and stable; splitting it keeps the app chunk small
+    // and lets browsers cache it across deploys.
     rollupOptions: {
-      input: {
-        index: resolve(__dirname, "index.html"),
-        control: resolve(__dirname, "control.html"),
-        tracker: resolve(__dirname, "tracker.html"),
-        tv: resolve(__dirname, "tv.html"),
+      output: {
+        manualChunks: {
+          maplibre: ["maplibre-gl"],
+          react: ["react", "react-dom"],
+        },
       },
     },
   },

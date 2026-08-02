@@ -1,0 +1,557 @@
+// Browser-side flight feed. Replaces the old Node server entirely: polls
+// airplanes.live directly, enriches from adsbdb, and keeps config in
+// localStorage. Every upstream sends `access-control-allow-origin: *`, so the
+// browser can talk to them without a proxy.
+//
+// The public surface is deliberately identical to the old WebSocket
+// `Connection` class, so `useStream` and every consumer work unchanged.
+
+import type { Aircraft, Config, SourceStatus } from "@shared/index.js";
+import {
+  DEFAULT_CONFIG,
+  MAX_RADIUS_MILES,
+  greatCircleKm,
+  mergeConfig,
+} from "@shared/index.js";
+
+const AIRCRAFT_API = "https://api.airplanes.live/v2/point";
+const ADSBDB_API = "https://api.adsbdb.com/v0";
+
+const CONFIG_KEY = "skylight.config";
+const ROUTE_CACHE_KEY = "skylight.routes";
+
+const POLL_MS = 3000;
+const NM_PER_MILE = 0.868976;
+/** airplanes.live caps the point query at 250 nm. */
+const MAX_RADIUS_NM = 250;
+const ROUTE_TTL_MS = 12 * 3600_000;
+/** Cap the persisted enrichment cache so localStorage can't grow unbounded. */
+const MAX_CACHED_ROUTES = 900;
+/** Forget aircraft we haven't seen for this long. */
+const STICKY_TTL_MS = 600_000;
+/** Trail length cap, in kilometres of ground track. */
+const MAX_TRAIL_KM = 50;
+/** Hard cap on stored fixes, so a fast jet can't grow the array unbounded. */
+const MAX_TRAIL_POINTS = 120;
+/** Ignore absurd jumps (bad fix / hex reuse) rather than drawing a streak. */
+const MAX_TRAIL_JUMP_DEG = 2.5;
+/** Concurrent adsbdb lookups. Busy airspace would otherwise fire hundreds. */
+const MAX_INFLIGHT = 6;
+
+export interface StreamState {
+  connected: boolean;
+  config: Config | null;
+  now: number;
+  aircraft: Aircraft[];
+  status: SourceStatus | null;
+  /** Recent ground track per aircraft, oldest first: [lon, lat] pairs. */
+  trails: Map<string, [number, number][]>;
+}
+
+type Listener = (state: StreamState) => void;
+
+/** Raw readsb-schema record (the subset we consume). */
+interface RawAircraft {
+  hex?: string;
+  flight?: string;
+  lat?: number;
+  lon?: number;
+  alt_baro?: number | "ground";
+  alt_geom?: number;
+  gs?: number;
+  track?: number;
+  baro_rate?: number;
+  squawk?: string;
+  category?: string;
+  r?: string;
+  t?: string;
+  seen?: number;
+  rssi?: number;
+}
+
+interface RouteInfo {
+  airline?: string;
+  origin?: string;
+  destination?: string;
+  originName?: string;
+  destName?: string;
+  originLat?: number;
+  originLon?: number;
+  destLat?: number;
+  destLon?: number;
+}
+
+interface TypeInfo {
+  typeName?: string;
+  registration?: string;
+}
+
+interface CacheEntry<T> {
+  /** null = looked up and genuinely not found (negative cache). */
+  data: T | null;
+  at: number;
+}
+
+interface RouteCache {
+  routes: Record<string, CacheEntry<RouteInfo>>;
+  types: Record<string, CacheEntry<TypeInfo>>;
+}
+
+/** Enrichment held across polls so labels never flicker back to blank. */
+interface Sticky extends RouteInfo, TypeInfo {
+  lastSeen: number;
+}
+
+function normalize(raw: RawAircraft, ts: number): Aircraft | null {
+  if (!raw.hex) return null;
+  const onGround = raw.alt_baro === "ground";
+  return {
+    hex: raw.hex,
+    flight: raw.flight?.trim() || undefined,
+    lat: raw.lat,
+    lon: raw.lon,
+    altBaro: onGround ? null : (raw.alt_baro as number | undefined) ?? null,
+    altGeom: raw.alt_geom ?? null,
+    gs: raw.gs,
+    track: raw.track,
+    baroRate: raw.baro_rate ?? null,
+    squawk: raw.squawk,
+    category: raw.category,
+    onGround,
+    registration: raw.r,
+    typeCode: raw.t,
+    seen: raw.seen,
+    rssi: raw.rssi,
+    ts,
+  };
+}
+
+/**
+ * Airline callsigns are 2-3 letters followed by a flight number. ADS-B also
+ * carries military tactical callsigns ("LEADER 4"), bare registrations and
+ * junk; sending those to adsbdb just earns a 400 on every poll.
+ */
+const CALLSIGN_RE = /^[A-Z]{2,3}[0-9][0-9A-Z]{0,3}$/;
+
+/**
+ * Drop the oldest fixes until the track is within the distance and point
+ * caps. Distance is what the user sees, so that's the primary limit; the
+ * point cap is a cheap backstop for very fast aircraft.
+ */
+function trimTrail(trail: [number, number][]): void {
+  if (trail.length > MAX_TRAIL_POINTS) {
+    trail.splice(0, trail.length - MAX_TRAIL_POINTS);
+  }
+
+  let total = 0;
+  // Walk backwards from the newest fix, accumulating length.
+  let cut = 0;
+  for (let i = trail.length - 1; i > 0; i--) {
+    total += greatCircleKm(trail[i][1], trail[i][0], trail[i - 1][1], trail[i - 1][0]);
+    if (total > MAX_TRAIL_KM) {
+      cut = i - 1;
+      break;
+    }
+  }
+  if (cut > 0) trail.splice(0, cut);
+}
+
+function loadConfig(): Config {
+  try {
+    const raw = localStorage.getItem(CONFIG_KEY);
+    if (!raw) return { ...DEFAULT_CONFIG };
+    return mergeConfig(DEFAULT_CONFIG, JSON.parse(raw) as Partial<Config>);
+  } catch {
+    return { ...DEFAULT_CONFIG };
+  }
+}
+
+function loadRouteCache(): RouteCache {
+  try {
+    const raw = localStorage.getItem(ROUTE_CACHE_KEY);
+    if (!raw) return { routes: {}, types: {} };
+    const parsed = JSON.parse(raw) as Partial<RouteCache>;
+    return { routes: parsed.routes ?? {}, types: parsed.types ?? {} };
+  } catch {
+    return { routes: {}, types: {} };
+  }
+}
+
+/**
+ * Live sky feed. Same shape as the old WebSocket connection so nothing
+ * downstream had to change when the server went away.
+ */
+export class SkyFeed {
+  private listeners = new Set<Listener>();
+  private timer: ReturnType<typeof setInterval> | null = null;
+  private closed = false;
+  private inflight = new Set<string>();
+  private sticky = new Map<string, Sticky>();
+  private cache: RouteCache = { routes: {}, types: {} };
+  private cacheDirty = false;
+  private flushTimer: ReturnType<typeof setInterval> | null = null;
+  /** Guards against overlapping polls when the network is slow. */
+  private polling = false;
+  /** hex -> recent [lon, lat] fixes, oldest first. */
+  private trails = new Map<string, [number, number][]>();
+
+  state: StreamState = {
+    connected: false,
+    config: null,
+    now: 0,
+    aircraft: [],
+    status: null,
+    trails: new Map(),
+  };
+
+  connect(): void {
+    this.closed = false;
+    this.cache = loadRouteCache();
+    this.update({ config: loadConfig() });
+
+    void this.poll();
+    this.timer = setInterval(() => void this.poll(), POLL_MS);
+    this.flushTimer = setInterval(() => this.flushCache(), 15_000);
+  }
+
+  close(): void {
+    this.closed = true;
+    if (this.timer) clearInterval(this.timer);
+    if (this.flushTimer) clearInterval(this.flushTimer);
+    this.timer = null;
+    this.flushTimer = null;
+    this.flushCache();
+  }
+
+  // --- config (persisted locally) ---
+
+  patchConfig(patch: Partial<Config>): void {
+    const base = this.state.config ?? DEFAULT_CONFIG;
+    const next = mergeConfig(base, patch);
+    this.update({ config: next });
+    try {
+      localStorage.setItem(CONFIG_KEY, JSON.stringify(next));
+    } catch {
+      // storage full or blocked (private mode) — run from memory instead
+    }
+    // Re-centring or re-scoping changes the query window: refresh immediately
+    // rather than showing the old area until the next tick.
+    if (
+      patch.centerLat !== undefined ||
+      patch.centerLon !== undefined ||
+      patch.radiusMiles !== undefined
+    ) {
+      // Old tracks belong to the old view; keep them and they'd smear across
+      // the map as unrelated streaks.
+      if (patch.centerLat !== undefined || patch.centerLon !== undefined) {
+        this.trails.clear();
+        this.update({ trails: new Map() });
+      }
+      void this.poll();
+    }
+  }
+
+  resetConfig(): void {
+    this.update({ config: { ...DEFAULT_CONFIG } });
+    try {
+      localStorage.removeItem(CONFIG_KEY);
+    } catch {
+      // ignore
+    }
+    void this.poll();
+  }
+
+  // --- polling ---
+
+  private apiUrl(cfg: Config): string {
+    // Two limits apply: our own 200 km guard rail, and airplanes.live's
+    // hard 250 nm ceiling. Honour whichever bites first.
+    const miles = Math.min(cfg.radiusMiles, MAX_RADIUS_MILES);
+    const r = Math.min(MAX_RADIUS_NM, Math.ceil(miles * NM_PER_MILE) + 1);
+    return `${AIRCRAFT_API}/${cfg.centerLat}/${cfg.centerLon}/${r}`;
+  }
+
+  private async poll(): Promise<void> {
+    if (this.closed || this.polling) return;
+    const cfg = this.state.config;
+    if (!cfg) return;
+
+    this.polling = true;
+    const now = Date.now();
+    try {
+      const res = await fetch(this.apiUrl(cfg), {
+        signal: AbortSignal.timeout(9000),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      const json = (await res.json()) as { ac?: RawAircraft[]; aircraft?: RawAircraft[] };
+      const rawList = json.ac ?? json.aircraft ?? [];
+
+      const list: Aircraft[] = [];
+      for (const raw of rawList) {
+        const ac = normalize(raw, now);
+        if (ac) {
+          this.enrich(ac, now);
+          this.recordTrail(ac);
+          list.push(ac);
+        }
+      }
+
+      this.pruneSticky(now);
+      this.pruneTrails(list);
+      this.update({
+        connected: true,
+        now,
+        aircraft: list,
+        // New Map identity so React sees the change.
+        trails: new Map(this.trails),
+        status: {
+          source: "api",
+          ok: true,
+          count: list.length,
+          lastOk: now,
+          message: "airplanes.live",
+        },
+      });
+    } catch (err) {
+      // Keep the last good snapshot on screen; the renderer ages it out.
+      this.update({
+        connected: false,
+        status: {
+          source: "api",
+          ok: false,
+          count: this.state.aircraft.length,
+          lastOk: this.state.status?.lastOk ?? null,
+          message: err instanceof Error ? err.message : "feed unavailable",
+        },
+      });
+    } finally {
+      this.polling = false;
+    }
+  }
+
+  // --- enrichment ---
+
+  private fresh<T>(e: CacheEntry<T> | undefined, now: number): boolean {
+    return !!e && now - e.at < ROUTE_TTL_MS;
+  }
+
+  private enrich(ac: Aircraft, now: number): void {
+    const cs = ac.flight?.trim().toUpperCase();
+
+    if (cs && CALLSIGN_RE.test(cs)) {
+      const hit = this.cache.routes[cs];
+      if (this.fresh(hit, now)) {
+        const r = hit!.data;
+        if (r) {
+          ac.airline = r.airline ?? ac.airline;
+          ac.origin = r.origin ?? ac.origin;
+          ac.destination = r.destination ?? ac.destination;
+          ac.originName = r.originName ?? ac.originName;
+          ac.destName = r.destName ?? ac.destName;
+          ac.originLat = r.originLat ?? ac.originLat;
+          ac.originLon = r.originLon ?? ac.originLon;
+          ac.destLat = r.destLat ?? ac.destLat;
+          ac.destLon = r.destLon ?? ac.destLon;
+        }
+      } else {
+        void this.fetchRoute(cs);
+      }
+    }
+
+    const typeHit = this.cache.types[ac.hex];
+    if (this.fresh(typeHit, now)) {
+      const t = typeHit!.data;
+      if (t) {
+        ac.typeName = ac.typeName ?? t.typeName;
+        ac.registration = ac.registration ?? t.registration;
+      }
+    } else {
+      void this.fetchType(ac.hex);
+    }
+
+    // Sticky merge: once resolved, never fall back to blank on a later poll.
+    const prev = this.sticky.get(ac.hex);
+    if (prev) {
+      ac.typeName = ac.typeName ?? prev.typeName;
+      ac.airline = ac.airline ?? prev.airline;
+      ac.origin = ac.origin ?? prev.origin;
+      ac.destination = ac.destination ?? prev.destination;
+      ac.registration = ac.registration ?? prev.registration;
+      ac.originName = ac.originName ?? prev.originName;
+      ac.destName = ac.destName ?? prev.destName;
+      ac.originLat = ac.originLat ?? prev.originLat;
+      ac.originLon = ac.originLon ?? prev.originLon;
+      ac.destLat = ac.destLat ?? prev.destLat;
+      ac.destLon = ac.destLon ?? prev.destLon;
+    }
+
+    this.sticky.set(ac.hex, {
+      typeName: ac.typeName,
+      airline: ac.airline,
+      origin: ac.origin,
+      destination: ac.destination,
+      registration: ac.registration,
+      originName: ac.originName,
+      destName: ac.destName,
+      originLat: ac.originLat,
+      originLon: ac.originLon,
+      destLat: ac.destLat,
+      destLon: ac.destLon,
+      lastSeen: now,
+    });
+  }
+
+  private async fetchRoute(cs: string): Promise<void> {
+    const key = "r:" + cs;
+    if (this.inflight.has(key) || this.inflight.size >= MAX_INFLIGHT) return;
+    this.inflight.add(key);
+    try {
+      const res = await fetch(`${ADSBDB_API}/callsign/${encodeURIComponent(cs)}`, {
+        signal: AbortSignal.timeout(8000),
+      });
+      let data: RouteInfo | null = null;
+      if (res.ok) {
+        const json = (await res.json()) as any;
+        const fr = json?.response?.flightroute;
+        if (fr) {
+          data = {
+            airline: fr.airline?.name,
+            origin: fr.origin?.iata_code ?? fr.origin?.icao_code,
+            destination: fr.destination?.iata_code ?? fr.destination?.icao_code,
+            originName: fr.origin?.municipality,
+            destName: fr.destination?.municipality,
+            originLat: fr.origin?.latitude,
+            originLon: fr.origin?.longitude,
+            destLat: fr.destination?.latitude,
+            destLon: fr.destination?.longitude,
+          };
+        }
+      } else if (res.status !== 404 && res.status !== 400) {
+        // Server-side trouble: don't burn a cache slot, just retry later.
+        return;
+      }
+      // 404 = no route on file; 400 = adsbdb rejects the callsign shape. Both
+      // are permanent for this key, so cache the miss instead of re-asking
+      // on every poll.
+      this.cache.routes[cs] = { data, at: Date.now() };
+      this.cacheDirty = true;
+    } catch {
+      // leave uncached so a later poll retries
+    } finally {
+      this.inflight.delete(key);
+    }
+  }
+
+  private async fetchType(hex: string): Promise<void> {
+    const key = "t:" + hex;
+    if (this.inflight.has(key) || this.inflight.size >= MAX_INFLIGHT) return;
+    this.inflight.add(key);
+    try {
+      const res = await fetch(`${ADSBDB_API}/aircraft/${encodeURIComponent(hex)}`, {
+        signal: AbortSignal.timeout(8000),
+      });
+      let data: TypeInfo | null = null;
+      if (res.ok) {
+        const json = (await res.json()) as any;
+        const a = json?.response?.aircraft;
+        if (a) {
+          data = {
+            typeName: a.manufacturer && a.type ? `${a.manufacturer} ${a.type}` : a.type,
+            registration: a.registration,
+          };
+        }
+      } else if (res.status !== 404 && res.status !== 400) {
+        return;
+      }
+      // Negative-cache unknown airframes for the same reason as routes.
+      this.cache.types[hex] = { data, at: Date.now() };
+      this.cacheDirty = true;
+    } catch {
+      // retry later
+    } finally {
+      this.inflight.delete(key);
+    }
+  }
+
+  private pruneSticky(now: number): void {
+    for (const [hex, s] of this.sticky) {
+      if (now - s.lastSeen > STICKY_TTL_MS) this.sticky.delete(hex);
+    }
+  }
+
+  /** Append this fix to the aircraft's ground track. */
+  private recordTrail(ac: Aircraft): void {
+    if (ac.lat == null || ac.lon == null) return;
+    const trail = this.trails.get(ac.hex);
+    if (!trail) {
+      this.trails.set(ac.hex, [[ac.lon, ac.lat]]);
+      return;
+    }
+
+    const last = trail[trail.length - 1];
+    // Skip a duplicate fix; drop the history entirely on an implausible jump.
+    if (last[0] === ac.lon && last[1] === ac.lat) return;
+    if (
+      Math.abs(last[0] - ac.lon) > MAX_TRAIL_JUMP_DEG ||
+      Math.abs(last[1] - ac.lat) > MAX_TRAIL_JUMP_DEG
+    ) {
+      this.trails.set(ac.hex, [[ac.lon, ac.lat]]);
+      return;
+    }
+
+    trail.push([ac.lon, ac.lat]);
+    trimTrail(trail);
+  }
+
+  /** Drop trails for aircraft no longer in the feed. */
+  private pruneTrails(current: Aircraft[]): void {
+    const live = new Set(current.map((a) => a.hex));
+    for (const hex of this.trails.keys()) {
+      if (!live.has(hex)) this.trails.delete(hex);
+    }
+  }
+
+  /** Keep only the newest N entries so the cache can't outgrow localStorage. */
+  private trimCache(): void {
+    for (const bucket of [this.cache.routes, this.cache.types]) {
+      const keys = Object.keys(bucket);
+      if (keys.length <= MAX_CACHED_ROUTES) continue;
+      keys
+        .sort((a, b) => bucket[b].at - bucket[a].at)
+        .slice(MAX_CACHED_ROUTES)
+        .forEach((k) => delete bucket[k]);
+    }
+  }
+
+  private flushCache(): void {
+    if (!this.cacheDirty) return;
+    this.cacheDirty = false;
+    this.trimCache();
+    try {
+      localStorage.setItem(ROUTE_CACHE_KEY, JSON.stringify(this.cache));
+    } catch {
+      // Quota exceeded: drop the cache and carry on from memory.
+      try {
+        localStorage.removeItem(ROUTE_CACHE_KEY);
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  // --- subscription ---
+
+  subscribe(fn: Listener): () => void {
+    this.listeners.add(fn);
+    fn(this.state);
+    return () => {
+      this.listeners.delete(fn);
+    };
+  }
+
+  private update(partial: Partial<StreamState>): void {
+    this.state = { ...this.state, ...partial };
+    for (const fn of this.listeners) fn(this.state);
+  }
+}

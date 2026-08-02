@@ -1,54 +1,38 @@
-// Config deep-merge: partial patches must never drop sibling keys. The
-// tracker's vision.net is a nested object inside a section, the easiest place
-// to silently wipe the whole detector config with a one-field patch.
-
 import { describe, expect, it } from "vitest";
-import { DEFAULT_CONFIG, mergeConfig, mergeTrackerConfig } from "../src/config.js";
+import { DEFAULT_CONFIG, mergeConfig } from "../src/config.js";
 
-describe("mergeTrackerConfig", () => {
-  it("deep-merges a partial vision.net patch (keeps enabled/modelPath)", () => {
-    const merged = mergeTrackerConfig(DEFAULT_CONFIG.tracker, {
-      vision: { net: { everyNTicks: 3 } } as never,
+describe("mergeConfig", () => {
+  it("applies top-level values", () => {
+    const merged = mergeConfig(DEFAULT_CONFIG, { radiusMiles: 42 });
+    expect(merged.radiusMiles).toBe(42);
+    expect(merged.centerLat).toBe(DEFAULT_CONFIG.centerLat);
+  });
+
+  it("moves the centre and its name together", () => {
+    const merged = mergeConfig(DEFAULT_CONFIG, {
+      centerLat: 51.47,
+      centerLon: -0.4543,
+      locationName: "London (LHR)",
     });
-    expect(merged.vision.net.everyNTicks).toBe(3);
-    // The fields the patch DIDN'T mention must survive.
-    expect(merged.vision.net.enabled).toBe(DEFAULT_CONFIG.tracker.vision.net.enabled);
-    expect(merged.vision.net.modelPath).toBe(DEFAULT_CONFIG.tracker.vision.net.modelPath);
-    expect(merged.vision.net.inputSize).toBe(DEFAULT_CONFIG.tracker.vision.net.inputSize);
+    expect(merged.centerLat).toBe(51.47);
+    expect(merged.centerLon).toBe(-0.4543);
+    expect(merged.locationName).toBe("London (LHR)");
   });
 
-  it("keeps other vision keys when patching net", () => {
-    const merged = mergeTrackerConfig(DEFAULT_CONFIG.tracker, {
-      vision: { net: { scoreThresh: 0.5 } } as never,
+  it("leaves the base untouched", () => {
+    const before = DEFAULT_CONFIG.radiusMiles;
+    mergeConfig(DEFAULT_CONFIG, { radiusMiles: 99 });
+    expect(DEFAULT_CONFIG.radiusMiles).toBe(before);
+  });
+
+  it("survives an empty patch", () => {
+    expect(mergeConfig(DEFAULT_CONFIG, {})).toEqual(DEFAULT_CONFIG);
+  });
+
+  it("replaces a non-string location name", () => {
+    const merged = mergeConfig(DEFAULT_CONFIG, {
+      locationName: undefined as never,
     });
-    expect(merged.vision.enabled).toBe(DEFAULT_CONFIG.tracker.vision.enabled);
-    expect(merged.vision.autoCalibrate).toBe(DEFAULT_CONFIG.tracker.vision.autoCalibrate);
-    expect(merged.vision.net.scoreThresh).toBe(0.5);
-  });
-
-  it("restores a persisted config that predates the net section", () => {
-    // Simulate loading an old persisted config (no net) against new defaults.
-    const persisted = mergeConfig(DEFAULT_CONFIG, {
-      tracker: { vision: { applyCorrection: true } } as never,
-    });
-    expect(persisted.tracker.vision.net).toEqual(DEFAULT_CONFIG.tracker.vision.net);
-  });
-});
-
-describe("mergeConfig locationProfiles (#18)", () => {
-  const profile = { id: "a1", name: "LAX", lat: 33.94, lon: -118.4, radiusMiles: 5 };
-
-  it("persists saved profiles and replaces the array wholesale on patch", () => {
-    const withOne = mergeConfig(DEFAULT_CONFIG, { locationProfiles: [profile] });
-    expect(withOne.locationProfiles).toEqual([profile]);
-    // A later patch of the array replaces it (the client sends the full list).
-    const cleared = mergeConfig(withOne, { locationProfiles: [] });
-    expect(cleared.locationProfiles).toEqual([]);
-  });
-
-  it("keeps saved profiles when an unrelated field is patched", () => {
-    const base = mergeConfig(DEFAULT_CONFIG, { locationProfiles: [profile] });
-    const after = mergeConfig(base, { brightness: 0.5 });
-    expect(after.locationProfiles).toEqual([profile]);
+    expect(typeof merged.locationName).toBe("string");
   });
 });

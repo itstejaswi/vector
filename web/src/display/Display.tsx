@@ -1,24 +1,31 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Config, Theme } from "@shared/index.js";
-import { DEFAULT_CONFIG } from "@shared/index.js";
+import type { Config } from "@shared/index.js";
+import { DEFAULT_CONFIG, MAX_RADIUS_MILES, MIN_RADIUS_MILES } from "@shared/index.js";
 import { useStream } from "../lib/useStream.js";
-import { Renderer } from "./renderer.js";
+import { useSmoothAircraft } from "../lib/useSmoothAircraft.js";
 import { GeoMapLayer } from "./GeoMapLayer.js";
 import { CinematicOverlays } from "./CinematicOverlays.js";
-import { GeomapTuner } from "./GeomapTuner.js";
-import { AIRPORT_OPTIONS } from "./airports";
+import { LocationBox } from "./LocationBox.js";
 
-const THEMES: Theme[] = ["ambient", "telemetry", "focus", "geomap"];
-
-type AirportOption = (typeof AIRPORT_OPTIONS)[number];
-
-const DEFAULT_AIRPORT =
-  AIRPORT_OPTIONS.find((a) => a.code === "IXE") ?? AIRPORT_OPTIONS[0];
+/**
+ * Radius ladder in miles, stopping at the 200 km cap. The values are chosen
+ * to read as round numbers in kilometres: 10, 25, 50, 100, 150, 200.
+ */
+const RADIUS_STEPS = [
+  MIN_RADIUS_MILES, // ~3.1 mi  =   5 km
+  6.2, //  10 km
+  15.5, //  25 km
+  31.1, //  50 km
+  62.1, // 100 km
+  93.2, // 150 km
+  MAX_RADIUS_MILES, // 124.3 mi = 200 km
+];
 
 export function Display() {
-  const { state, conn } = useStream("display");
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const rendererRef = useRef<Renderer | null>(null);
+  const { state, conn } = useStream();
+
+  // Positions advance between polls so aircraft glide instead of jumping.
+  const aircraft = useSmoothAircraft(state.aircraft, state.now);
 
   const configRef = useRef<Config>(state.config ?? DEFAULT_CONFIG);
   configRef.current = state.config ?? DEFAULT_CONFIG;
@@ -26,212 +33,101 @@ export function Display() {
   const [selectedHex, setSelectedHex] = useState<string | null>(null);
   const [centerVersion, setCenterVersion] = useState(0);
 
-  const [query, setQuery] = useState(DEFAULT_AIRPORT?.code ?? "");
-  const [selectedAirport, setSelectedAirport] = useState<AirportOption | undefined>(DEFAULT_AIRPORT);
-  const [airportSearchOpen, setAirportSearchOpen] = useState(false);
-
-  const filteredAirports = useMemo(() => {
-    const q = query.trim().toLowerCase();
-
-    if (!q) return AIRPORT_OPTIONS;
-
-    return AIRPORT_OPTIONS.filter((a) => {
-      const label = a.label?.toLowerCase() ?? "";
-      const code = a.code.toLowerCase();
-      return code.includes(q) || label.includes(q);
-    });
-  }, [query]);
-
   const selectedAircraft = useMemo(
-    () => (selectedHex ? state.aircraft.find((a) => a.hex === selectedHex) ?? null : null),
-    [selectedHex, state.aircraft],
+    () => (selectedHex ? aircraft.find((a) => a.hex === selectedHex) ?? null : null),
+    [selectedHex, aircraft],
   );
 
-  const handleClickAircraft = useCallback((hex: string | null) => setSelectedHex(hex), []);
-  const handleRecenter = useCallback(() => setCenterVersion((v) => v + 1), []);
+  const handleSelect = useCallback((hex: string | null) => setSelectedHex(hex), []);
   const handleDeselect = useCallback(() => setSelectedHex(null), []);
 
-  const handleAirportSelect = useCallback(
-    (airport: AirportOption) => {
-      const [centerLat, centerLon] = airport.center;
-
-      setSelectedAirport(airport);
-      setQuery(airport.label ?? airport.code);
-      setAirportSearchOpen(false);
+  const handlePickLocation = useCallback(
+    (centerLat: number, centerLon: number, locationName: string) => {
       setSelectedHex(null);
       setCenterVersion((v) => v + 1);
-
-      conn.patchConfig({
-        centerLat,
-        centerLon,
-        locationName: airport.label ?? airport.code,
-      });
+      conn.patchConfig({ centerLat, centerLon, locationName });
     },
     [conn],
   );
 
-  const handleZoomIn = useCallback(() => {
-    const c = configRef.current;
-    const next = Math.max(5, c.radiusMiles - (c.radiusMiles >= 50 ? 25 : c.radiusMiles >= 25 ? 15 : 5));
-    conn.patchConfig({ radiusMiles: next });
-  }, [conn]);
+  const stepRadius = useCallback(
+    (dir: -1 | 1) => {
+      const current = configRef.current.radiusMiles;
+      // Find where we sit on the ladder, then move one rung.
+      let idx = RADIUS_STEPS.findIndex((r) => r >= current - 0.01);
+      if (idx === -1) idx = RADIUS_STEPS.length - 1;
+      const next = RADIUS_STEPS[clamp(idx + dir, 0, RADIUS_STEPS.length - 1)];
+      if (Math.abs(next - current) > 0.01) conn.patchConfig({ radiusMiles: next });
+    },
+    [conn],
+  );
 
-  const handleZoomOut = useCallback(() => {
-    const c = configRef.current;
-    const next = Math.min(150, c.radiusMiles + (c.radiusMiles >= 50 ? 25 : c.radiusMiles >= 25 ? 15 : 5));
-    conn.patchConfig({ radiusMiles: next });
-  }, [conn]);
+  const handleZoomIn = useCallback(() => stepRadius(-1), [stepRadius]);
+  const handleZoomOut = useCallback(() => stepRadius(1), [stepRadius]);
 
+  // Drop a stale selection once the aircraft leaves the feed.
   useEffect(() => {
-    if (state.config?.theme !== "geomap" && selectedHex) setSelectedHex(null);
-  }, [state.config?.theme, selectedHex]);
-
-  useEffect(() => {
-    if (!canvasRef.current) return;
-
-    const r = new Renderer(canvasRef.current, () => configRef.current);
-    rendererRef.current = r;
-    r.start();
-
-    const onResize = () => r.resize();
-    window.addEventListener("resize", onResize);
-
-    return () => {
-      window.removeEventListener("resize", onResize);
-      r.stop();
-      rendererRef.current = null;
-    };
-  }, []);
-
-  useEffect(() => {
-    rendererRef.current?.update(state.aircraft);
-  }, [state.now, state.aircraft]);
+    if (!selectedHex) return;
+    if (state.aircraft.length === 0) return;
+    if (!state.aircraft.some((a) => a.hex === selectedHex)) setSelectedHex(null);
+  }, [state.aircraft, selectedHex]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const c = configRef.current;
+      // Don't hijack keys while the location box has focus.
+      const el = document.activeElement;
+      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) return;
 
-      switch (e.key) {
-        case "r":
-          conn.patchConfig({ rotationDeg: (c.rotationDeg + 5) % 360 });
-          break;
-        case "R":
-          conn.patchConfig({ rotationDeg: (c.rotationDeg - 5 + 360) % 360 });
-          break;
-        case "m":
-          conn.patchConfig({ mirrorX: !c.mirrorX });
-          break;
-        case "M":
-          conn.patchConfig({ mirrorY: !c.mirrorY });
-          break;
-        case "t": {
-          const next = THEMES[(THEMES.indexOf(c.theme) + 1) % THEMES.length];
-          conn.patchConfig({ theme: next });
-          break;
-        }
-        case "[":
-          conn.patchConfig({ radiusMiles: Math.max(0.5, c.radiusMiles - 0.5) });
-          break;
-        case "]":
-          conn.patchConfig({ radiusMiles: c.radiusMiles + 0.5 });
-          break;
-        case "h":
-          conn.patchConfig({ showHud: !c.showHud });
-          break;
-        case "Escape":
-          setSelectedHex(null);
-          setAirportSearchOpen(false);
-          break;
-      }
+      if (e.key === "Escape") setSelectedHex(null);
+      if (e.key === "+" || e.key === "=") handleZoomIn();
+      if (e.key === "-" || e.key === "_") handleZoomOut();
     };
-
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [conn]);
+  }, [handleZoomIn, handleZoomOut]);
 
   const cfg = state.config;
-  const geomap = cfg?.theme === "geomap";
+  if (!cfg) return <div className="boot">INITIALISING…</div>;
 
   return (
-    <div className={"display-root" + (geomap ? " theme-geomap" : "")}>
-      <GeomapTuner />
+    <div className="display-root">
+      <GeoMapLayer
+        centerLat={cfg.centerLat}
+        centerLon={cfg.centerLon}
+        radiusMiles={cfg.radiusMiles}
+        aircraft={state.aircraft}
+        selectedAircraft={selectedAircraft}
+        trails={state.trails}
+        centerVersion={centerVersion}
+        onClickAircraft={handleSelect}
+      />
 
-      {geomap && (
-        <div className="airport-selector">
-          <input
-            value={query}
-            placeholder="Search airport..."
-            onFocus={() => setAirportSearchOpen(true)}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              setAirportSearchOpen(true);
-            }}
-          />
+      <LocationBox
+        locationName={cfg.locationName}
+        centerLat={cfg.centerLat}
+        centerLon={cfg.centerLon}
+        onPick={handlePickLocation}
+      />
 
-          {airportSearchOpen && (
-            <div className="airport-list">
-              {filteredAirports.map((a) => (
-                <div
-                  key={a.code}
-                  className={"airport-item" + (selectedAirport?.code === a.code ? " active" : "")}
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    handleAirportSelect(a);
-                  }}
-                >
-                  {a.label ?? a.code}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {geomap && cfg && (
-        <GeoMapLayer
-          centerLat={cfg.centerLat}
-          centerLon={cfg.centerLon}
-          radiusMiles={cfg.radiusMiles}
-          aircraft={state.aircraft}
-          selectedAircraft={selectedAircraft}
-          centerVersion={centerVersion}
-          onClickAircraft={handleClickAircraft}
-        />
-      )}
-
-      <canvas ref={canvasRef} className="display-canvas" />
-
-      {geomap && cfg && (
-        <CinematicOverlays
-          locationName={cfg.locationName}
-          centerLat={cfg.centerLat}
-          centerLon={cfg.centerLon}
-          aircraftCount={state.aircraft.length}
-          radiusMiles={cfg.radiusMiles}
-          aircraft={state.aircraft}
-          connected={state.connected}
-          source={state.status?.source ?? "AIRPLANES.LIVE"}
-          now={state.now}
-          selectedHex={selectedHex}
-          onRecenter={handleRecenter}
-          onDeselect={handleDeselect}
-          onZoomIn={handleZoomIn}
-          onZoomOut={handleZoomOut}
-        />
-      )}
-
-      {cfg?.showHud && !geomap && (
-        <div className="hud">
-          <div className={"hud-dot " + (state.connected ? "ok" : "bad")} />
-          <span>
-            {state.status?.source ?? "-"} - {state.aircraft.length} ac - rot {cfg.rotationDeg} - mirror{" "}
-            {cfg.mirrorX ? "X" : "-"}
-            {cfg.mirrorY ? "Y" : ""} - r {cfg.radiusMiles}mi - {cfg.projectionMode} - {cfg.theme}
-          </span>
-        </div>
-      )}
-
-      {!state.connected && <div className="reconnect">connecting...</div>}
+      <CinematicOverlays
+        locationName={cfg.locationName}
+        centerLat={cfg.centerLat}
+        centerLon={cfg.centerLon}
+        radiusMiles={cfg.radiusMiles}
+        aircraft={state.aircraft}
+        connected={state.connected}
+        source={state.status?.message ?? "airplanes.live"}
+        now={state.now}
+        selectedHex={selectedHex}
+        onDeselect={handleDeselect}
+        onZoomIn={handleZoomIn}
+        onZoomOut={handleZoomOut}
+        onSelect={handleSelect}
+      />
     </div>
   );
+}
+
+function clamp(v: number, lo: number, hi: number): number {
+  return Math.min(hi, Math.max(lo, v));
 }

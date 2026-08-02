@@ -1,214 +1,176 @@
-// Pure geo/projection math. No DOM, no state — shared by display + server.
+// Geographic helpers shared by the feed and the map layer.
 
-import type { ProjectionMode } from "./config.js";
-
-const M_PER_MILE = 1609.34;
-
-/** Signed decimal degrees, e.g. `37.6213, -122.3790`. */
-export function formatLatLon(lat: number, lon: number): string {
-  return `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
-}
-const KT_TO_MS = 0.514444;
-const DEG = Math.PI / 180;
-
-export interface Meters {
-  east: number;
-  north: number;
-}
-
-export interface Point {
-  x: number;
-  y: number;
-}
-
-/**
- * Flat-earth approximation of lat/lon -> local meters relative to a center.
- * Plenty accurate within a few miles.
- */
-export function llToMeters(
-  lat: number,
-  lon: number,
-  lat0: number,
-  lon0: number,
-): Meters {
-  const east = (lon - lon0) * Math.cos(lat0 * DEG) * 111320;
-  const north = (lat - lat0) * 110540;
-  return { east, north };
-}
-
-/** Horizontal ground distance (meters) from center. */
-export function rangeMeters(m: Meters): number {
-  return Math.hypot(m.east, m.north);
-}
-
-export function metersToMiles(m: number): number {
-  return m / M_PER_MILE;
-}
-
-/** Pixels per meter so that `radiusMiles` fills half of the smaller screen axis. */
-export function pxPerMeter(
-  screenW: number,
-  screenH: number,
-  radiusMiles: number,
-): number {
-  return Math.min(screenW, screenH) / 2 / (radiusMiles * M_PER_MILE);
-}
-
-export interface ProjectOpts {
-  rotationDeg: number;
-  mirrorX: boolean;
-  mirrorY: boolean;
-  pxPerM: number;
-  screenW: number;
-  screenH: number;
-}
-
-/** Local meters -> screen pixels with rotation + mirror, screen-Y inverted. */
-export function project(m: Meters, o: ProjectOpts): Point {
-  const t = o.rotationDeg * DEG;
-  const cos = Math.cos(t);
-  const sin = Math.sin(t);
-  let x = m.east * cos - m.north * sin;
-  let y = m.east * sin + m.north * cos;
-  if (o.mirrorX) x = -x;
-  if (o.mirrorY) y = -y;
-  return {
-    x: o.screenW / 2 + x * o.pxPerM,
-    y: o.screenH / 2 - y * o.pxPerM, // screen Y grows downward
-  };
-}
-
-/**
- * Dead-reckon a position forward along its track at ground speed.
- * Returns new local meters. Used to smooth ~1 Hz updates to 60 fps.
- */
-export function deadReckon(
-  m: Meters,
-  trackDeg: number | undefined,
-  gsKt: number | undefined,
-  dtSec: number,
-): Meters {
-  if (trackDeg == null || gsKt == null || gsKt <= 0) return m;
-  const dist = gsKt * KT_TO_MS * dtSec;
-  const t = trackDeg * DEG;
-  return {
-    east: m.east + dist * Math.sin(t),
-    north: m.north + dist * Math.cos(t),
-  };
-}
-
+/** Squawk codes that mean hijack / radio failure / general emergency. */
 export const EMERGENCY_SQUAWKS = new Set(["7500", "7600", "7700"]);
 
-const FT_TO_M = 0.3048;
+const EARTH_RADIUS_MILES = 3958.8;
+const EARTH_RADIUS_KM = 6371;
+const DEG = Math.PI / 180;
 
-/** Horizontal sky coordinates relative to the observer (zenith = center). */
-export interface SkyAngles {
-  /** Degrees from true North, clockwise. */
-  az: number;
-  /** Degrees above the mathematical horizon. */
-  elev: number;
-  /** Horizontal ground range from observer, meters. */
-  groundM: number;
-  /** Line-of-sight distance observer → aircraft, meters. */
-  slantM: number;
+/** Format a coordinate pair with hemisphere letters. */
+export function formatLatLon(lat: number, lon: number): string {
+  const ns = lat >= 0 ? "N" : "S";
+  const ew = lon >= 0 ? "E" : "W";
+  return `${Math.abs(lat).toFixed(4)}°${ns} ${Math.abs(lon).toFixed(4)}°${ew}`;
 }
 
-/** Interpolated ground fix used by the renderer motion model. */
-export interface GroundSample {
-  m: Meters;
-  altFt: number;
+/** Great-circle distance in miles. */
+export function greatCircleMiles(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+): number {
+  return EARTH_RADIUS_MILES * centralAngle(lat1, lon1, lat2, lon2);
 }
 
-/** Horizon radius in meters (maps to the edge of the circular sky field). */
-export function horizonRadiusM(radiusMiles: number): number {
-  return radiusMiles * M_PER_MILE;
+/** Great-circle distance in kilometres. */
+export function greatCircleKm(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+): number {
+  return EARTH_RADIUS_KM * centralAngle(lat1, lon1, lat2, lon2);
+}
+
+/** Angle subtended at the Earth's centre between two points, in radians. */
+function centralAngle(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+): number {
+  const f1 = lat1 * DEG;
+  const f2 = lat2 * DEG;
+  const df = (lat2 - lat1) * DEG;
+  const dl = (lon2 - lon1) * DEG;
+  const a =
+    Math.sin(df / 2) ** 2 + Math.cos(f1) * Math.cos(f2) * Math.sin(dl / 2) ** 2;
+  return 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 /**
- * Observer at ground level → apparent sky position of an aircraft.
- * Uses flat-earth for bearing (accurate within a few miles) and right-triangle
- * elevation from horizontal range + altitude. Near zenith, `fallbackAz` (e.g.
- * track) stabilizes the singularity.
+ * Points along the great circle between two coordinates, as [lon, lat] pairs
+ * ready for GeoJSON.
+ *
+ * `bow` lifts the path off the direct line, perpendicular to it, peaking at
+ * the midpoint. On a Mercator map a true great circle between nearby points
+ * is visually straight, which reads as a ruler line rather than flight over a
+ * curved Earth; a modest bow restores that sense. Long routes already curve
+ * strongly on their own, so the bow is tapered away as distance grows.
  */
-export function groundToSkyAngles(
-  m: Meters,
-  altFt: number,
-  fallbackAz?: number,
-): SkyAngles {
-  const groundM = rangeMeters(m);
-  const h = Math.max(0, altFt) * FT_TO_M;
+export function greatCirclePoints(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+  steps: number,
+  bow = 0,
+): [number, number][] {
+  const p1 = lat1 * DEG;
+  const l1 = lon1 * DEG;
+  const p2 = lat2 * DEG;
+  const l2 = lon2 * DEG;
+  const d = centralAngle(lat1, lon1, lat2, lon2);
 
-  let elev: number;
-  let az: number;
-
-  if (groundM < 0.5) {
-    elev = 89.5;
-    az = fallbackAz ?? 0;
-  } else {
-    elev = Math.atan2(h, groundM) * (180 / Math.PI);
-    az = normAz(Math.atan2(m.east, m.north) * (180 / Math.PI));
+  if (d === 0 || !Number.isFinite(d)) {
+    return [
+      [lon1, lat1],
+      [lon2, lat2],
+    ];
   }
 
-  const slantM = Math.hypot(groundM, h);
-  return { az, elev, groundM, slantM };
-}
+  // Direct vector in degrees, and its perpendicular (longitude widened by
+  // latitude so the offset looks even on screen rather than in raw degrees).
+  const cosLat = Math.cos(((lat1 + lat2) / 2) * DEG) || 1;
+  const dxDeg = (lon2 - lon1) * cosLat;
+  const dyDeg = lat2 - lat1;
+  const spanDeg = Math.hypot(dxDeg, dyDeg);
+  // Unit normal, pointing left of travel.
+  const nx = spanDeg > 0 ? -dyDeg / spanDeg : 0;
+  const ny = spanDeg > 0 ? dxDeg / spanDeg : 0;
+  const amplitude = bow * spanDeg;
 
-/** Radial distance on the sky dome for a given elevation (90° = zenith = 0). */
-export function skyElevToRadius(elevDeg: number, horizonRadius: number): number {
-  const e = Math.max(0, Math.min(90, elevDeg));
-  return (1 - e / 90) * horizonRadius;
-}
+  const out: [number, number][] = [];
+  for (let i = 0; i <= steps; i++) {
+    const f = i / steps;
+    const A = Math.sin((1 - f) * d) / Math.sin(d);
+    const B = Math.sin(f * d) / Math.sin(d);
+    const x = A * Math.cos(p1) * Math.cos(l1) + B * Math.cos(p2) * Math.cos(l2);
+    const y = A * Math.cos(p1) * Math.sin(l1) + B * Math.cos(p2) * Math.sin(l2);
+    const z = A * Math.sin(p1) + B * Math.sin(p2);
 
-/** Sky angles → local east/north on the dome (before calibration rotation). */
-export function skyAnglesToMeters(angles: SkyAngles, horizonRadius: number): Meters {
-  const r = skyElevToRadius(angles.elev, horizonRadius);
-  const a = angles.az * DEG;
-  return { east: Math.sin(a) * r, north: Math.cos(a) * r };
-}
+    let lon = Math.atan2(y, x) / DEG;
+    let lat = Math.atan2(z, Math.sqrt(x * x + y * y)) / DEG;
 
-/**
- * Project an aircraft fix to screen pixels. In sky mode, ground position and
- * altitude are converted to azimuth/elevation on the look-up dome so apparent
- * angular speed matches what you see outdoors.
- */
-export function projectAircraft(
-  sample: GroundSample,
-  mode: ProjectionMode,
-  o: ProjectOpts,
-  horizonRadius: number,
-  fallbackAz?: number,
-): Point {
-  if (mode === "map") return project(sample.m, o);
-  const sky = groundToSkyAngles(sample.m, sample.altFt, fallbackAz);
-  return project(skyAnglesToMeters(sky, horizonRadius), o);
-}
+    if (amplitude !== 0) {
+      // sin gives a smooth rise and fall, zero at both endpoints.
+      const lift = Math.sin(f * Math.PI) * amplitude;
+      lat += ny * lift;
+      lon += (nx * lift) / cosLat;
+    }
 
-/** Project a celestial / horizon point (azimuth + elevation) to screen pixels. */
-export function projectSkyPoint(
-  azDeg: number,
-  elevDeg: number,
-  o: ProjectOpts,
-  horizonRadius: number,
-): Point {
-  const r = skyElevToRadius(elevDeg, horizonRadius);
-  const a = azDeg * DEG;
-  return project({ east: Math.sin(a) * r, north: Math.cos(a) * r }, o);
+    out.push([lon, lat]);
+  }
+  return out;
 }
 
 /**
- * Subtle slant-range size scale for sky mode — nearer / lower aircraft read
- * slightly larger, matching outdoor perspective. Clamped for stability.
+ * How much bow suits a route of this length. Short hops get the most help
+ * (they'd otherwise be dead straight); intercontinental routes get none,
+ * since their real great circle already sweeps across the projection.
  */
-export function skyGlyphScale(slantM: number, refSlantM = 4500): number {
-  return Math.max(0.72, Math.min(1.38, refSlantM / Math.max(slantM, 400)));
+export function bowForDistance(km: number): number {
+  if (km <= 0) return 0;
+  if (km >= 4000) return 0;
+  // 0.18 at zero distance, tapering smoothly to nothing by 4000 km.
+  return 0.18 * (1 - km / 4000) ** 1.4;
 }
 
-/** Shortest-path interpolate between two azimuths, degrees. */
-export function lerpAzimuth(a: number, b: number, t: number): number {
-  let d = ((b - a + 540) % 360) - 180;
-  return normAz(a + d * t);
+/**
+ * Closed ring of [lon, lat] points at a fixed great-circle radius — used for
+ * the range ring, which must bend with the projection rather than being a
+ * screen-space circle.
+ */
+export function circlePoints(
+  lat: number,
+  lon: number,
+  radiusMiles: number,
+  steps: number,
+): [number, number][] {
+  const d = radiusMiles / EARTH_RADIUS_MILES;
+  const latR = lat * DEG;
+  const lonR = lon * DEG;
+  const out: [number, number][] = [];
+
+  for (let i = 0; i <= steps; i++) {
+    const brg = (i / steps) * 2 * Math.PI;
+    const lat2 = Math.asin(
+      Math.sin(latR) * Math.cos(d) + Math.cos(latR) * Math.sin(d) * Math.cos(brg),
+    );
+    const lon2 =
+      lonR +
+      Math.atan2(
+        Math.sin(brg) * Math.sin(d) * Math.cos(latR),
+        Math.cos(d) - Math.sin(latR) * Math.sin(lat2),
+      );
+    out.push([lon2 / DEG, lat2 / DEG]);
+  }
+  return out;
 }
 
-function normAz(deg: number): number {
-  return ((deg % 360) + 360) % 360;
+/**
+ * Squared planar distance in degrees, longitude corrected for latitude. Only
+ * valid for ranking nearby points, which is all we use it for.
+ */
+export function distSq(
+  lat: number,
+  lon: number,
+  refLat: number,
+  refLon: number,
+): number {
+  const dy = lat - refLat;
+  const dx = (lon - refLon) * Math.cos(refLat * DEG);
+  return dx * dx + dy * dy;
 }
