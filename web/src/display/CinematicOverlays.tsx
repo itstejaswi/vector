@@ -39,8 +39,10 @@ export function CinematicOverlays({
   onSelect,
 }: Props) {
   const [clock, setClock] = useState(() => new Date());
-  /** Mobile only: the flight card collapses to a summary bar until tapped. */
+  /** Mobile only: the sheet collapses to a summary bar until tapped. */
   const [expanded, setExpanded] = useState(false);
+  /** Mobile only: which panel the expanded sheet is showing. */
+  const [tab, setTab] = useState<"flight" | "traffic" | "stats">("flight");
 
   useEffect(() => {
     const t = setInterval(() => setClock(new Date()), 1000);
@@ -81,6 +83,92 @@ export function CinematicOverlays({
   const stats = useMemo(() => computeTraffic(aircraft), [aircraft]);
   const fixAge = now > 0 ? Math.max(0, Math.round((Date.now() - now) / 1000)) : null;
 
+
+  // Content blocks, shared by both layouts: the desktop panels and the
+  // mobile sheet render the same markup rather than diverging.
+
+  const flightPanel = focus && (
+    <>
+      <div className="fx-call">
+        <span className="fx-call-id">{(focus.flight || focus.hex).toUpperCase()}</span>
+        {focus.airline && <span className="fx-call-airline">{focus.airline}</span>}
+      </div>
+
+      {focus.origin || focus.destination ? (
+        <div className="fx-route">
+          <Endpoint kind="DEPARTURE" code={focus.origin} city={focus.originName} />
+          <div className="fx-link">
+            <span className="fx-link-dot" />
+            <span className="fx-link-line" />
+            <span className="fx-link-plane">✈</span>
+            <span className="fx-link-line" />
+            <span className="fx-link-dot" />
+          </div>
+          <Endpoint kind="ARRIVAL" code={focus.destination} city={focus.destName} />
+        </div>
+      ) : (
+        <div className="fx-noroute">
+          <span className="fx-noroute-title">NO ROUTE FILED</span>
+          <span className="fx-noroute-sub">
+            {focus.registration
+              ? `Reg ${focus.registration}`
+              : "Route data unavailable for this callsign"}
+          </span>
+        </div>
+      )}
+
+      <div className="fx-rows">
+        <Metric icon="◎" label="DISTANCE" value={routeDistance(focus)} />
+        <Metric icon="◷" label="TIME TO GO" value={timeToGo(focus)} />
+        <Metric icon="✈" label="AIRCRAFT" value={aircraftType(focus)} />
+        <Metric icon="▲" label="ALTITUDE" value={altitude(focus)} />
+        <Metric icon="»" label="SPEED" value={speed(focus)} />
+        <Metric icon="◈" label="STATUS" value={status(focus)} highlight />
+      </div>
+    </>
+  );
+
+  const trafficPanel =
+    contacts.length === 0 ? (
+      <div className="ct-empty">
+        {connected ? "No aircraft in range" : "Connecting to feed…"}
+      </div>
+    ) : (
+      <div className="ct-list">
+        {contacts.map((ac) => (
+          <button
+            type="button"
+            key={ac.hex}
+            className={"ct-row" + (ac.hex === selectedHex ? " active" : "")}
+            onClick={() => onSelect(ac.hex)}
+          >
+            <span className="ct-call">{(ac.flight || ac.hex).toUpperCase()}</span>
+            <span className="ct-route">
+              {ac.origin && ac.destination
+                ? `${ac.origin} → ${ac.destination}`
+                : ac.typeCode || "—"}
+            </span>
+            <span className="ct-alt">{shortAlt(ac)}</span>
+          </button>
+        ))}
+      </div>
+    );
+
+  const statsPanel = (
+    <>
+      <div className="tm-grid">
+        <Cell label="AIRBORNE" value={String(stats.airborne)} />
+        <Cell label="GROUND" value={String(stats.ground)} />
+        <Cell label="CLIMB" value={String(stats.climbing)} />
+        <Cell label="DESCEND" value={String(stats.descending)} />
+      </div>
+      <div className="tm-foot">
+        <span>{(source || "AIRPLANES.LIVE").toUpperCase()}</span>
+        <span>{fixAge == null ? "—" : `FIX ${Math.min(fixAge, 99)}s`}</span>
+      </div>
+    </>
+  );
+
   return (
     <div className={"hud" + (expanded ? " sheet-open" : "")}>
       <div className="hud-vignette" />
@@ -114,103 +202,37 @@ export function CinematicOverlays({
         </button>
       </div>
 
-      {/* ---------- flight card ---------- */}
+      {/* ================= desktop layout ================= */}
+
       {focus && (
-        <section className={"panel panel-flight" + (expanded ? " expanded" : "")}>
-          {/* Summary bar: the whole card on mobile until you open it, and a
-              hidden element on desktop where there's room for everything. */}
-          <button
-            type="button"
-            className="fx-peek"
-            onClick={() => setExpanded((v) => !v)}
-            aria-expanded={expanded}
-          >
-            <span className="fx-peek-call">{(focus.flight || focus.hex).toUpperCase()}</span>
-            <span className="fx-peek-route">
-              {focus.origin && focus.destination
-                ? `${focus.origin} → ${focus.destination}`
-                : focus.typeCode || "—"}
-            </span>
-            <span className="fx-peek-chevron" aria-hidden="true">
-              {expanded ? "▾" : "▴"}
-            </span>
-          </button>
-
-          <div className="fx-body">
-            <header className="panel-head">
-              <span className="panel-glyph">✈</span>
-              <span>FLIGHT INFO</span>
-              {isAuto ? (
-                <span className="panel-tag">NEAREST</span>
-              ) : (
-                <button
-                  type="button"
-                  className="panel-x"
-                  onClick={onDeselect}
-                  title="Clear selection"
-                >
-                  ✕
-                </button>
-              )}
-            </header>
-
-            <div className="fx-call">
-              <span className="fx-call-id">{(focus.flight || focus.hex).toUpperCase()}</span>
-              {focus.airline && <span className="fx-call-airline">{focus.airline}</span>}
-            </div>
-
-            {focus.origin || focus.destination ? (
-              <div className="fx-route">
-                <Endpoint kind="DEPARTURE" code={focus.origin} city={focus.originName} />
-                <div className="fx-link">
-                  <span className="fx-link-dot" />
-                  <span className="fx-link-line" />
-                  <span className="fx-link-plane">✈</span>
-                  <span className="fx-link-line" />
-                  <span className="fx-link-dot" />
-                </div>
-                <Endpoint kind="ARRIVAL" code={focus.destination} city={focus.destName} />
-              </div>
+        <section className="panel panel-flight wide-only">
+          <header className="panel-head">
+            <span className="panel-glyph">✈</span>
+            <span>FLIGHT INFO</span>
+            {isAuto ? (
+              <span className="panel-tag">NEAREST</span>
             ) : (
-              <div className="fx-noroute">
-                <span className="fx-noroute-title">NO ROUTE FILED</span>
-                <span className="fx-noroute-sub">
-                  {focus.registration
-                    ? `Reg ${focus.registration}`
-                    : "Route data unavailable for this callsign"}
-                </span>
-              </div>
+              <button
+                type="button"
+                className="panel-x"
+                onClick={onDeselect}
+                title="Clear selection"
+              >
+                ✕
+              </button>
             )}
-
-            <div className="fx-rows">
-              <Metric icon="◎" label="DISTANCE" value={routeDistance(focus)} />
-              <Metric icon="◷" label="TIME TO GO" value={timeToGo(focus)} />
-              <Metric icon="✈" label="AIRCRAFT" value={aircraftType(focus)} />
-              <Metric icon="▲" label="ALTITUDE" value={altitude(focus)} />
-              <Metric icon="»" label="SPEED" value={speed(focus)} />
-              <Metric icon="◈" label="STATUS" value={status(focus)} highlight />
-            </div>
-          </div>
+          </header>
+          {flightPanel}
         </section>
       )}
 
-      {/* ---------- left rail ---------- */}
-      <div className="hud-rail">
+      <div className="hud-rail wide-only">
         <section className="panel">
           <header className="panel-head">
             <span className="panel-glyph">▮</span>
             <span>TELEMETRY</span>
           </header>
-          <div className="tm-grid">
-            <Cell label="AIRBORNE" value={String(stats.airborne)} />
-            <Cell label="GROUND" value={String(stats.ground)} />
-            <Cell label="CLIMB" value={String(stats.climbing)} />
-            <Cell label="DESCEND" value={String(stats.descending)} />
-          </div>
-          <div className="tm-foot">
-            <span>{(source || "AIRPLANES.LIVE").toUpperCase()}</span>
-            <span>{fixAge == null ? "—" : `FIX ${Math.min(fixAge, 99)}s`}</span>
-          </div>
+          {statsPanel}
         </section>
 
         <section className="panel panel-contacts">
@@ -219,33 +241,87 @@ export function CinematicOverlays({
             <span>LIVE TRAFFIC</span>
             <span className="panel-tag">{contacts.length}</span>
           </header>
-
-          {contacts.length === 0 ? (
-            <div className="ct-empty">
-              {connected ? "No aircraft in range" : "Connecting to feed…"}
-            </div>
-          ) : (
-            <div className="ct-list">
-              {contacts.map((ac) => (
-                <button
-                  type="button"
-                  key={ac.hex}
-                  className={"ct-row" + (ac.hex === selectedHex ? " active" : "")}
-                  onClick={() => onSelect(ac.hex)}
-                >
-                  <span className="ct-call">{(ac.flight || ac.hex).toUpperCase()}</span>
-                  <span className="ct-route">
-                    {ac.origin && ac.destination
-                      ? `${ac.origin} → ${ac.destination}`
-                      : ac.typeCode || "—"}
-                  </span>
-                  <span className="ct-alt">{shortAlt(ac)}</span>
-                </button>
-              ))}
-            </div>
-          )}
+          {trafficPanel}
         </section>
       </div>
+
+      {/* ================= mobile sheet ================= */}
+      {/* One sheet holding all three panels behind tabs, so nothing is
+          unreachable on a phone the way a hidden rail would be. */}
+
+      <section className={"sheet narrow-only" + (expanded ? " expanded" : "")}>
+        <button
+          type="button"
+          className="sheet-peek"
+          onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
+        >
+          <span className="sheet-grip" aria-hidden="true" />
+          {focus ? (
+            <>
+              <span className="sheet-peek-call">
+                {(focus.flight || focus.hex).toUpperCase()}
+              </span>
+              <span className="sheet-peek-route">
+                {focus.origin && focus.destination
+                  ? `${focus.origin} → ${focus.destination}`
+                  : focus.typeCode || "—"}
+              </span>
+            </>
+          ) : (
+            <span className="sheet-peek-call">{stats.total} CONTACTS</span>
+          )}
+          <span className="sheet-peek-chevron" aria-hidden="true">
+            {expanded ? "▾" : "▴"}
+          </span>
+        </button>
+
+        {expanded && (
+          <>
+            <div className="sheet-tabs" role="tablist">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={tab === "flight"}
+                className={tab === "flight" ? "active" : ""}
+                onClick={() => setTab("flight")}
+              >
+                Flight
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={tab === "traffic"}
+                className={tab === "traffic" ? "active" : ""}
+                onClick={() => setTab("traffic")}
+              >
+                Traffic
+                <span className="sheet-tab-count">{contacts.length}</span>
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={tab === "stats"}
+                className={tab === "stats" ? "active" : ""}
+                onClick={() => setTab("stats")}
+              >
+                Stats
+              </button>
+            </div>
+
+            <div className="sheet-body">
+              {tab === "flight" &&
+                (focus ? (
+                  flightPanel
+                ) : (
+                  <div className="ct-empty">No aircraft selected</div>
+                ))}
+              {tab === "traffic" && trafficPanel}
+              {tab === "stats" && statsPanel}
+            </div>
+          </>
+        )}
+      </section>
 
       {/* ---------- credit ---------- */}
       <footer className="hud-credit">
@@ -262,6 +338,7 @@ export function CinematicOverlays({
     </div>
   );
 }
+
 
 /* ---------------- sub-components ---------------- */
 
