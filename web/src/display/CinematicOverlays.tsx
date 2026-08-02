@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Aircraft } from "@shared/index.js";
 import { distSq, greatCircleKm, milesToKm } from "@shared/index.js";
+import { Icon, type IconName } from "./Icon.js";
 
 interface Props {
   locationName: string;
@@ -100,7 +101,7 @@ export function CinematicOverlays({
           <div className="fx-link">
             <span className="fx-link-dot" />
             <span className="fx-link-line" />
-            <span className="fx-link-plane">✈</span>
+            <Icon name="planeRight" size={12} className="fx-link-plane" />
             <span className="fx-link-line" />
             <span className="fx-link-dot" />
           </div>
@@ -118,12 +119,12 @@ export function CinematicOverlays({
       )}
 
       <div className="fx-rows">
-        <Metric icon="◎" label="DISTANCE" value={routeDistance(focus)} />
-        <Metric icon="◷" label="TIME TO GO" value={timeToGo(focus)} />
-        <Metric icon="✈" label="AIRCRAFT" value={aircraftType(focus)} />
-        <Metric icon="▲" label="ALTITUDE" value={altitude(focus)} />
-        <Metric icon="»" label="SPEED" value={speed(focus)} />
-        <Metric icon="◈" label="STATUS" value={status(focus)} highlight />
+        <Metric icon="target" label="DISTANCE" value={routeDistance(focus)} />
+        <Metric icon="clock" label="TIME TO GO" value={timeToGo(focus)} />
+        <Metric icon="plane" label="AIRCRAFT" value={aircraftType(focus)} />
+        <Metric icon="altitude" label="ALTITUDE" value={altitude(focus)} />
+        <Metric icon="speed" label="SPEED" value={speed(focus)} />
+        <Metric icon="status" label="STATUS" value={status(focus)} highlight />
       </div>
     </>
   );
@@ -207,7 +208,7 @@ export function CinematicOverlays({
       {focus && (
         <section className="panel panel-flight wide-only">
           <header className="panel-head">
-            <span className="panel-glyph">✈</span>
+            <Icon name="plane" size={12} className="panel-glyph" />
             <span>FLIGHT INFO</span>
             {isAuto ? (
               <span className="panel-tag">NEAREST</span>
@@ -218,7 +219,7 @@ export function CinematicOverlays({
                 onClick={onDeselect}
                 title="Clear selection"
               >
-                ✕
+                <Icon name="close" size={11} />
               </button>
             )}
           </header>
@@ -229,7 +230,7 @@ export function CinematicOverlays({
       <div className="hud-rail wide-only">
         <section className="panel">
           <header className="panel-head">
-            <span className="panel-glyph">▮</span>
+            <Icon name="stats" size={12} className="panel-glyph" />
             <span>TELEMETRY</span>
           </header>
           {statsPanel}
@@ -237,7 +238,7 @@ export function CinematicOverlays({
 
         <section className="panel panel-contacts">
           <header className="panel-head">
-            <span className="panel-glyph">◈</span>
+            <Icon name="traffic" size={12} className="panel-glyph" />
             <span>LIVE TRAFFIC</span>
             <span className="panel-tag">{contacts.length}</span>
           </header>
@@ -271,9 +272,12 @@ export function CinematicOverlays({
           ) : (
             <span className="sheet-peek-call">{stats.total} CONTACTS</span>
           )}
-          <span className="sheet-peek-chevron" aria-hidden="true">
-            {expanded ? "▾" : "▴"}
-          </span>
+          <Icon
+            name="chevron"
+            size={11}
+            className="sheet-peek-chevron"
+            rotate={expanded ? 180 : 0}
+          />
         </button>
 
         {expanded && (
@@ -329,9 +333,7 @@ export function CinematicOverlays({
         <span className="hud-credit-dot" aria-hidden="true" />
         <span className="hud-credit-part">
           built with
-          <span className="hud-credit-heart" role="img" aria-label="love">
-            ♥
-          </span>
+          <Icon name="heart" size={11} className="hud-credit-heart" />
           and Microsoft Scout
         </span>
       </footer>
@@ -366,16 +368,14 @@ function Metric({
   value,
   highlight,
 }: {
-  icon: string;
+  icon: IconName;
   label: string;
   value: string;
   highlight?: boolean;
 }) {
   return (
     <div className={"fx-row" + (highlight ? " hot" : "")}>
-      <span className="fx-row-icon" aria-hidden="true">
-        {icon}
-      </span>
+      <Icon name={icon} size={12} className="fx-row-icon" />
       <span className="fx-row-label">{label}</span>
       <span className="fx-row-value">{value}</span>
     </div>

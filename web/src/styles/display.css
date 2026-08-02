@@ -103,6 +103,29 @@ button {
   z-index: 5;
 }
 
+/* ---------------- icons ---------------- */
+
+/*
+ * Every HUD symbol is an inline SVG rather than a typed character. Symbol
+ * characters like the plane and the diamonds aren't present in SF Pro or
+ * Segoe UI, so each one resolved to a different fallback font and rendered
+ * at a different size for the same font-size. An SVG fills exactly the box
+ * it's given, so icons stay square and consistent everywhere.
+ */
+.icon {
+  display: block;
+  flex: none;
+  /* The colour comes from whatever text the icon sits beside. */
+  fill: currentColor;
+}
+
+/* Icons that sit inside a run of text need baseline alignment instead. */
+.hud-credit-heart,
+.loc-hint-icon {
+  display: inline-block;
+  vertical-align: -0.14em;
+}
+
 /* ---------------- HUD shell ---------------- */
 
 .hud {
@@ -320,7 +343,6 @@ button {
 }
 
 .panel-glyph {
-  font-size: 11px;
   opacity: 0.85;
 }
 
@@ -453,9 +475,6 @@ button {
 
 .fx-link-plane {
   color: var(--amber);
-  font-size: 12px;
-  /* Nose points along the route, left to right. */
-  transform: rotate(90deg);
 }
 
 .fx-rows {
@@ -474,8 +493,8 @@ button {
 .fx-row-icon {
   color: var(--amber);
   opacity: 0.6;
-  font-size: 10px;
-  text-align: center;
+  /* An SVG is replaced content, so centre it in the 16px grid column. */
+  justify-self: center;
 }
 
 .fx-row-label {
@@ -725,12 +744,6 @@ button {
 }
 
 .hud-credit-heart {
-  display: inline-block;
-  font-family: "Segoe UI Symbol", "Apple Color Emoji", "Segoe UI Emoji", sans-serif;
-  font-size: 11px;
-  line-height: 1;
-  /* Symbol faces sit high; drop it onto the text baseline. */
-  transform: translateY(0.5px);
   color: #ff375f;
   animation: heartbeat 2.6s var(--ease) infinite;
 }
@@ -787,7 +800,6 @@ button {
 
 .loc-icon {
   color: var(--amber);
-  font-size: 13px;
   flex: none;
 }
 
@@ -1096,8 +1108,8 @@ button {
 }
 
 .sheet-peek-chevron {
-  font-size: 10px;
   color: var(--text-3);
+  transition: transform 0.28s var(--ease);
 }
 
 .sheet-tabs {

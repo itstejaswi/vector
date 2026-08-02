@@ -10,6 +10,7 @@ import {
   type RecentPlace,
 } from "../lib/places.js";
 import { AIRPORT_COORDS, AIRPORT_NAMES, POPULAR_AIRPORTS } from "./airportCoords.js";
+import { Icon } from "./Icon.js";
 
 interface Props {
   locationName: string;
@@ -204,9 +205,7 @@ export function LocationBox({ locationName, centerLat, centerLon, onPick }: Prop
   return (
     <div className="loc-box" ref={rootRef}>
       <div className="loc-field">
-        <span className="loc-icon" aria-hidden="true">
-          ◎
-        </span>
+        <Icon name="target" size={13} className="loc-icon" />
         <input
           value={query}
           spellCheck={false}
@@ -241,7 +240,7 @@ export function LocationBox({ locationName, centerLat, centerLon, onPick }: Prop
               void useMyLocation();
             }}
           >
-            ⌖
+            <Icon name="locate" size={15} />
           </button>
         )}
       </div>
@@ -292,7 +291,13 @@ export function LocationBox({ locationName, centerLat, centerLon, onPick }: Prop
 
           <div className="loc-hint">
             City, airport code, or coordinates
-            {GEOLOCATION_SUPPORTED && " · ⌖ my location"}
+            {GEOLOCATION_SUPPORTED && (
+              <>
+                {" · "}
+                <Icon name="locate" size={10} className="loc-hint-icon" />
+                {" my location"}
+              </>
+            )}
           </div>
         </div>
       )}
