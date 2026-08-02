@@ -1,33 +1,400 @@
 :root {
   color-scheme: dark;
+  --c-blue: #5fb3d4;
+  --c-cyan: #4dd2ff;
+  --c-amber: #ffaa3d;
+  --c-amber-hot: #ff6a00;
+  --c-bg: #0a0e14;
+  --c-panel: rgba(10, 16, 24, 0.65);
+  --c-border: rgba(95, 179, 212, 0.28);
+  --c-dim: #6a8fa8;
+  --c-text: #c9e3f0;
 }
-* {
-  box-sizing: border-box;
-}
-html,
-body,
-#root {
+
+* { box-sizing: border-box; }
+html, body, #root {
   margin: 0;
   height: 100%;
   width: 100%;
   background: #000;
   overflow: hidden;
 }
-.display-body {
-  cursor: none; /* hidden on the projector; unclutter also runs on the Pi */
-}
+.display-body { cursor: none; }
+
 .display-root {
   position: fixed;
   inset: 0;
   background: #000;
 }
+
+.geomap-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: auto;
+}
+
+.airport-selector {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  z-index: 9999;
+
+  width: 220px;
+}
+
+.airport-selector input {
+  width: 100%;
+  padding: 6px;
+  background: rgba(0, 0, 0, 0.8);
+  color: #00e5ff;
+  border: 1px solid #00e5ff;
+}
+
+.airport-list {
+  position: absolute;
+  width: 100%;
+  max-height: 200px;
+  overflow-y: auto;
+
+  background: rgba(0, 0, 0, 0.95);
+  border: 1px solid #00e5ff;
+}
+
+.airport-item {
+  padding: 6px;
+  cursor: pointer;
+}
+
+.airport-item:hover {
+  background: rgba(0, 229, 255, 0.3);
+}
+
+
 .display-canvas {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   display: block;
+  z-index: 9999;
 }
+
+/* In geomap mode, let the map receive drag/zoom/click events.
+   The canvas still renders planes/trails on top visually. */
+.theme-geomap .display-canvas {
+  pointer-events: none;
+}
+
+/* Show cursor in geomap mode — it's interactive, not a projector view */
+.theme-geomap .geomap-layer canvas {
+  cursor: pointer !important;
+}
+.theme-geomap {
+  cursor: default !important;
+}
+
+/* =============== Cinematic overlays =============== */
+.cinematic-overlays {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  font-family: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  color: var(--c-text);
+  letter-spacing: 0.5px;
+  overflow: hidden;
+}
+
+.cine-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(95, 179, 212, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(95, 179, 212, 0.05) 1px, transparent 1px);
+  background-size: 80px 80px;
+  mix-blend-mode: screen;
+  pointer-events: none;
+}
+
+.cine-vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, transparent 35%, rgba(0, 0, 0, 0.55) 100%);
+  pointer-events: none;
+}
+
+/* Corner brackets */
+.cine-corner-bracket {
+  position: absolute;
+  width: 44px;
+  height: 44px;
+  border-color: var(--c-blue);
+  border-style: solid;
+  border-width: 0;
+  opacity: 0.55;
+  pointer-events: none;
+}
+.cine-tl { top: 10px; left: 10px; border-top-width: 2px; border-left-width: 2px; }
+.cine-tr { top: 10px; right: 10px; border-top-width: 2px; border-right-width: 2px; }
+.cine-bl { bottom: 10px; left: 10px; border-bottom-width: 2px; border-left-width: 2px; }
+.cine-br { bottom: 10px; right: 10px; border-bottom-width: 2px; border-right-width: 2px; }
+
+/* Side rails (4 left, 3 right) */
+.cine-rail-l, .cine-rail-r {
+  position: absolute;
+  top: 80px;
+  bottom: 80px;
+  width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  pointer-events: none;
+  z-index: 3;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(95, 179, 212, 0.3) transparent;
+}
+.cine-rail-l { left: 24px; }
+.cine-rail-r { right: 24px; }
+
+.cine-rail-l::-webkit-scrollbar,
+.cine-rail-r::-webkit-scrollbar { width: 4px; }
+.cine-rail-l::-webkit-scrollbar-thumb,
+.cine-rail-r::-webkit-scrollbar-thumb { background: rgba(95, 179, 212, 0.25); border-radius: 4px; }
+
+/* HUD panels */
+.cine-hud {
+  position: relative;
+  background: var(--c-panel);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--c-border);
+  border-radius: 4px;
+  padding: 12px 16px;
+  width: 100%;
+  font-size: 11px;
+  text-transform: uppercase;
+  animation: cine-hud-glow 4s ease-in-out infinite;
+}
+@keyframes cine-hud-glow {
+  0%, 100% { box-shadow: 0 0 20px rgba(77, 210, 255, 0.06); }
+  50% { box-shadow: 0 0 30px rgba(77, 210, 255, 0.14); }
+}
+
+/* Orange variant for telemetry panels */
+.cine-hud.cine-orange {
+  border-color: rgba(255, 138, 61, 0.32);
+  animation: cine-hud-glow-orange 4s ease-in-out infinite;
+}
+.cine-hud.cine-orange .cine-hud-title {
+  color: var(--c-amber);
+  border-bottom-color: rgba(255, 138, 61, 0.22);
+}
+@keyframes cine-hud-glow-orange {
+  0%, 100% { box-shadow: 0 0 20px rgba(255, 138, 61, 0.06); }
+  50% { box-shadow: 0 0 30px rgba(255, 138, 61, 0.16); }
+}
+
+.cine-hud-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--c-blue);
+  letter-spacing: 2.5px;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--c-border);
+  padding-bottom: 8px;
+}
+
+.cine-hud-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 10.5px;
+  margin: 4px 0;
+  line-height: 1.4;
+}
+.cine-hud-row span { color: var(--c-dim); font-weight: 400; }
+.cine-hud-row b {
+  color: var(--c-text);
+  font-weight: 500;
+  text-align: right;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cine-status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #4ade80;
+  box-shadow: 0 0 8px #4ade80;
+  animation: cine-status-pulse 2s ease-in-out infinite;
+}
+.cine-status-dot.bad {
+  background: var(--c-amber-hot);
+  box-shadow: 0 0 8px var(--c-amber-hot);
+}
+@keyframes cine-status-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.cine-blink {
+  color: var(--c-amber) !important;
+  animation: cine-blink 1.4s steps(2, end) infinite;
+}
+@keyframes cine-blink {
+  50% { opacity: 0.35; }
+}
+
+/* Top bar: SELECTED badge + RE-CENTER button */
+.cine-topbar {
+  position: absolute;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  z-index: 4;
+  pointer-events: none;
+}
+.cine-topbar > * { pointer-events: auto; }
+
+.cine-recenter-btn {
+  background: rgba(10, 16, 24, 0.7);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(95, 179, 212, 0.4);
+  border-radius: 4px;
+  color: var(--c-blue);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 2px;
+  padding: 8px 16px;
+  cursor: pointer;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+}
+.cine-recenter-btn:hover {
+  border-color: var(--c-blue);
+  color: var(--c-cyan);
+  box-shadow: 0 0 16px rgba(77, 210, 255, 0.4);
+}
+
+.cine-selected-badge {
+  background: rgba(10, 16, 24, 0.75);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 170, 61, 0.5);
+  border-radius: 4px;
+  padding: 8px 14px;
+  color: var(--c-amber);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 0 16px rgba(255, 170, 61, 0.25);
+}
+.cine-selected-badge button {
+  background: none;
+  border: 1px solid rgba(255, 170, 61, 0.4);
+  color: var(--c-amber);
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-family: inherit;
+}
+.cine-selected-badge button:hover {
+  background: rgba(255, 170, 61, 0.15);
+}
+
+/* Subtle radar sweep */
+.cine-radar-sweep {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 75vmin;
+  height: 75vmin;
+  margin-top: -37.5vmin;
+  margin-left: -37.5vmin;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 0deg,
+    rgba(77, 210, 255, 0) 0deg,
+    rgba(77, 210, 255, 0) 290deg,
+    rgba(77, 210, 255, 0.07) 330deg,
+    rgba(77, 210, 255, 0.18) 355deg,
+    rgba(77, 210, 255, 0.25) 360deg
+  );
+  animation: cine-radar-rotate 8s linear infinite;
+  mix-blend-mode: screen;
+  opacity: 0.7;
+  pointer-events: none;
+}
+@keyframes cine-radar-rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Subtle center beacon (1 expanding ring) */
+.cine-beacon-wrap {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.cine-beacon-core {
+  position: absolute;
+  top: -4px;
+  left: -4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--c-amber);
+  box-shadow: 0 0 8px var(--c-amber), 0 0 16px rgba(255, 170, 61, 0.4);
+}
+.cine-beacon-range {
+  position: absolute;
+  top: -8px;
+  left: -8px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid var(--c-amber);
+  animation: cine-range-expand 5s ease-out infinite;
+  opacity: 0;
+}
+@keyframes cine-range-expand {
+  0% { transform: scale(1); opacity: 0.3; }
+  100% { transform: scale(6); opacity: 0; }
+}
+
+/* Hide original HUD in geomap mode */
+.theme-geomap .hud { display: none !important; }
+
+/* Original HUD (other themes) */
 .hud {
   position: fixed;
   top: 10px;
@@ -41,22 +408,17 @@ body,
   padding: 6px 10px;
   border-radius: 6px;
   pointer-events: none;
+  z-index: 10;
 }
-.hud-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-}
-.hud-dot.ok {
-  background: #4ade80;
-}
-.hud-dot.bad {
-  background: #e0533d;
-}
+.hud-dot { width: 8px; height: 8px; border-radius: 50%; }
+.hud-dot.ok { background: #4ade80; }
+.hud-dot.bad { background: #e0533d; }
+
 .reconnect {
   position: fixed;
   bottom: 14px;
   right: 16px;
   font: 12px "JetBrains Mono", ui-monospace, monospace;
   color: #6b7280;
+  z-index: 10;
 }

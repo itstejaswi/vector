@@ -234,8 +234,8 @@ export function Control() {
             <Slider value={cfg.labelRotationDeg} min={0} max={355} step={5} unit="°"
               onChange={(v) => set({ labelRotationDeg: v })} />
           </Row>
-          <Row label="Radius">
-            <Slider value={cfg.radiusMiles} min={0.5} max={10} step={0.5} unit="mi"
+<Row label="Radius">
+            <Slider value={cfg.radiusMiles} min={0.5} max={1500} step={5} unit="mi"
               onChange={(v) => set({ radiusMiles: v })} />
           </Row>
           <Row label="Projection" hint="sky = realistic look-up motion">
@@ -252,11 +252,12 @@ export function Control() {
 
         <Section title="View">
           <Row label="Theme">
-            <Segmented value={cfg.theme}
+         <Segmented value={cfg.theme}
               options={[
                 { value: "ambient", label: "Ambient" },
                 { value: "telemetry", label: "Telemetry" },
                 { value: "focus", label: "Focus" },
+                { value: "geomap", label: "Geomap" },
               ]}
               onChange={(v) => set({ theme: v })} />
           </Row>
@@ -269,7 +270,7 @@ export function Control() {
               onChange={(v) => set({ glyphSizePx: v })} />
           </Row>
           <Row label="Trail length">
-            <Slider value={cfg.trailSeconds} min={0} max={120} step={5} unit="s"
+            <Slider value={cfg.trailSeconds} min={0} max={1800} step={30} unit="s"
               onChange={(v) => set({ trailSeconds: v })} />
           </Row>
           <Row label="Color by altitude">

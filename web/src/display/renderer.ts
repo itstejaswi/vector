@@ -142,7 +142,7 @@ export class Renderer {
     private canvas: HTMLCanvasElement,
     private getConfig: () => Config,
   ) {
-    const ctx = canvas.getContext("2d", { alpha: false });
+    const ctx = canvas.getContext("2d", { alpha: true });
     if (!ctx) throw new Error("2D canvas context unavailable");
     this.ctx = ctx;
     this.resize();
@@ -307,9 +307,13 @@ export class Renderer {
       this.resize();
     }
 
-    ctx.fillStyle = cfg.palette.bg;
-    ctx.fillRect(0, 0, this.w, this.h);
-
+    if (cfg.theme === "geomap") {
+      ctx.clearRect(0, 0, this.w, this.h);
+    } else {
+      ctx.fillStyle = cfg.palette.bg;
+      ctx.fillRect(0, 0, this.w, this.h);
+    }
+    
     const pxPerM = pxPerMeter(this.w, this.h, cfg.radiusMiles);
     const proj: ProjOpts = {
       rotationDeg: cfg.rotationDeg,

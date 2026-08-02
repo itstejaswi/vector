@@ -13,7 +13,7 @@ import type {
 } from "./camera.js";
 import type { FovPoint } from "./aim.js";
 
-export type Theme = "ambient" | "telemetry" | "focus";
+export type Theme = "ambient" | "telemetry" | "focus" | "geomap";
 export type LabelDensity = "all" | "nearestN" | "nearestOnly";
 export type DataSource = "radio" | "api";
 /** Ground-speed display unit. ADS-B reports knots; the rest are converted. */
@@ -228,7 +228,14 @@ export interface Config {
   locationName: string;
   radiusMiles: number;
   /** Saved places (airports/cities) switchable from the control panel. */
-  locationProfiles: LocationProfile[];
+locationProfiles: [
+    { id: "mangaluru-detail", name: "Mangaluru Detail", lat: 12.9613, lon: 74.8900, radiusMiles: 25 },
+    { id: "delhi-detail",     name: "Delhi Detail",     lat: 28.5562, lon: 77.1000, radiusMiles: 25 },
+    { id: "mumbai-region",    name: "Mumbai Region",    lat: 19.0887, lon: 72.8679, radiusMiles: 200 },
+    { id: "south-india",      name: "South India",      lat: 13.0000, lon: 78.0000, radiusMiles: 400 },
+    { id: "all-india",        name: "All India",        lat: 22.5000, lon: 78.5000, radiusMiles: 900 },
+    { id: "subcontinent",     name: "Subcontinent",     lat: 22.0000, lon: 80.0000, radiusMiles: 1500 },
+  ],
 
   // --- data source ---
   /** dump1090/readsb aircraft.json URL for the radio source. */
@@ -317,12 +324,12 @@ export interface Config {
 }
 
 export const DEFAULT_CONFIG: Config = {
-  // Default center: San Francisco International (SFO). Set this to your own
+  // Default center: Mangalore. Set this to your own
   // location — ideally where you'll be looking up at the ceiling.
-  centerLat: 37.6213,
-  centerLon: -122.379,
-  locationName: "San Francisco International",
-  radiusMiles: 3,
+  centerLat: 28.5744,
+  centerLon: 77.0835,
+  locationName: "Delhi International Airport (DEL)",
+  radiusMiles: 5,
   locationProfiles: [],
 
   radioUrl: "http://localhost:8080/data/aircraft.json",
