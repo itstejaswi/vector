@@ -1,8 +1,5 @@
 // Geographic helpers shared by the feed and the map layer.
 
-/** Squawk codes that mean hijack / radio failure / general emergency. */
-export const EMERGENCY_SQUAWKS = new Set(["7500", "7600", "7700"]);
-
 const EARTH_RADIUS_MILES = 3958.8;
 const EARTH_RADIUS_KM = 6371;
 const DEG = Math.PI / 180;

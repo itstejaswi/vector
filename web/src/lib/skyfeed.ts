@@ -6,7 +6,7 @@
 // The public surface is deliberately identical to the old WebSocket
 // `Connection` class, so `useStream` and every consumer work unchanged.
 
-import type { Aircraft, Config, SourceStatus } from "@shared/index.js";
+import type { Aircraft, Config, FeedStatus } from "@shared/index.js";
 import {
   DEFAULT_CONFIG,
   MAX_RADIUS_MILES,
@@ -48,14 +48,14 @@ export interface StreamState {
   config: Config | null;
   now: number;
   aircraft: Aircraft[];
-  status: SourceStatus | null;
+  status: FeedStatus | null;
   /** Recent ground track per aircraft, oldest first: [lon, lat] pairs. */
   trails: Map<string, [number, number][]>;
 }
 
 type Listener = (state: StreamState) => void;
 
-/** Raw readsb-schema record (the subset we consume). */
+/** Raw aircraft record from airplanes.live (the subset we consume). */
 interface RawAircraft {
   hex?: string;
   flight?: string;
@@ -66,12 +66,10 @@ interface RawAircraft {
   gs?: number;
   track?: number;
   baro_rate?: number;
-  squawk?: string;
   category?: string;
   r?: string;
   t?: string;
   seen?: number;
-  rssi?: number;
 }
 
 interface RouteInfo {
@@ -108,7 +106,7 @@ interface Sticky extends RouteInfo, TypeInfo {
 }
 
 /**
- * Clean a raw callsign. ADS-B decoders pad or fill undecodable characters
+ * Clean a raw callsign. Upstream decoders pad or fill unreadable characters
  * with '@' and '_', which otherwise show up on the map as "@@@@@@@@".
  * Returns undefined when nothing usable is left.
  *
@@ -133,13 +131,11 @@ function normalize(raw: RawAircraft, ts: number): Aircraft | null {
     gs: raw.gs,
     track: raw.track,
     baroRate: raw.baro_rate ?? null,
-    squawk: raw.squawk,
     category: raw.category,
     onGround,
     registration: raw.r,
     typeCode: raw.t,
     seen: raw.seen,
-    rssi: raw.rssi,
     ts,
   };
 }
@@ -344,7 +340,6 @@ export class SkyFeed {
         // New Map identity so React sees the change.
         trails: new Map(this.trails),
         status: {
-          source: "api",
           ok: true,
           count: list.length,
           lastOk: now,
@@ -356,7 +351,6 @@ export class SkyFeed {
       this.update({
         connected: false,
         status: {
-          source: "api",
           ok: false,
           count: this.state.aircraft.length,
           lastOk: this.state.status?.lastOk ?? null,

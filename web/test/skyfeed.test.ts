@@ -15,7 +15,7 @@ describe("cleanCallsign", () => {
   });
 
   it("strips decoder fill characters", () => {
-    // readsb/dump1090 emit '@' and '_' where a character could not be decoded.
+    // Upstream decoders emit '@' and '_' where a character could not be read.
     expect(cleanCallsign("IGO5234@")).toBe("IGO5234");
     expect(cleanCallsign("BAW_921_")).toBe("BAW921");
   });

@@ -92,9 +92,9 @@ Basemap tiles © [CARTO](https://carto.com), © OpenStreetMap contributors.
 Airport coordinates from [OurAirports](https://ourairports.com) (CC0).
 
 Vector began as a fork of
-[cpaczek/skylight](https://github.com/cpaczek/skylight), an RTL-SDR ceiling
-projector, and was rebuilt as a browser-only tracker. The original MIT licence
-and copyright are retained in [LICENSE](LICENSE).
+[cpaczek/skylight](https://github.com/cpaczek/skylight) and was rebuilt as a
+browser-only tracker. The original MIT licence and copyright are retained in
+[LICENSE](LICENSE).
 
 ## Licence
 

@@ -1,6 +1,6 @@
-// Normalized aircraft model. The server maps both dump1090 (`aircraft.json`)
-// and the airplanes.live API into this single shape so the renderer never
-// cares where the data came from.
+// Normalized aircraft model. Positions arrive from airplanes.live and are
+// mapped into this single shape, so nothing downstream cares about the
+// upstream's field names.
 
 export interface Aircraft {
   /** 24-bit ICAO address — the stable key for everything. */
@@ -20,27 +20,25 @@ export interface Aircraft {
   track?: number;
   /** Vertical rate, ft/min (positive = climbing). */
   baroRate?: number | null;
-  squawk?: string;
+  /** ADS-B emitter category, used as a fallback when classifying the glyph. */
   category?: string;
   onGround?: boolean;
 
-  /** Registration (dump1090 `r`). */
+  /** Registration. */
   registration?: string;
-  /** ICAO type code, e.g. "B738" (dump1090 `t`). */
+  /** ICAO type code, e.g. "B738". */
   typeCode?: string;
 
-  /** Seconds since the last message for this aircraft (from the source). */
+  /** Seconds since the last message for this aircraft. */
   seen?: number;
-  /** Signal strength, dBFS (radio only). */
-  rssi?: number;
 
-  // --- enrichment (filled server-side) ---
+  // --- enrichment (looked up from adsbdb) ---
   /** Human type name, e.g. "Boeing 737-800". */
   typeName?: string;
   airline?: string;
   origin?: string;
   destination?: string;
-  /** Destination/origin city + coordinates (for ghost arcs + local time). */
+  /** Origin / destination city names and coordinates, for the route arc. */
   originName?: string;
   destName?: string;
   originLat?: number;
@@ -48,13 +46,6 @@ export interface Aircraft {
   destLat?: number;
   destLon?: number;
 
-  /** Server timestamp (ms) of the snapshot this fix came from. */
+  /** Timestamp (ms) of the snapshot this fix came from. */
   ts?: number;
-}
-
-/** A single broadcast snapshot of the current sky. */
-export interface AircraftSnapshot {
-  /** Server time (ms epoch) the snapshot was produced. */
-  now: number;
-  aircraft: Aircraft[];
 }

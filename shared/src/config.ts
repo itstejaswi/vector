@@ -2,7 +2,6 @@
 // tracker actually reads, persisted to localStorage and sanitised on the way
 // back in.
 
-export type DataSource = "radio" | "api";
 /** Ground-speed display unit. ADS-B reports knots; the rest are converted. */
 export type SpeedUnit = "kt" | "mph" | "kmh";
 
