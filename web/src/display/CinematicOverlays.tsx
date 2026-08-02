@@ -220,11 +220,15 @@ export function CinematicOverlays({
 
       {/* ---------- credit ---------- */}
       <footer className="hud-credit">
-        Vibe coded by Tejaswi
-        <span className="hud-credit-dot" aria-hidden="true">
-          ·
+        <span className="hud-credit-part">Vibe coded by Tejaswi</span>
+        <span className="hud-credit-dot" aria-hidden="true" />
+        <span className="hud-credit-part">
+          built with
+          <span className="hud-credit-heart" role="img" aria-label="love">
+            ♥
+          </span>
+          and Microsoft Scout
         </span>
-        built with <span className="hud-credit-heart">♥</span> and Microsoft Scout
       </footer>
     </div>
   );
