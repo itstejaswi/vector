@@ -130,15 +130,17 @@ export function CinematicOverlays({
           </div>
 
           {focus.origin || focus.destination ? (
-            <>
+            <div className="fx-route">
               <Endpoint kind="DEPARTURE" code={focus.origin} city={focus.originName} />
               <div className="fx-link">
+                <span className="fx-link-dot" />
                 <span className="fx-link-line" />
                 <span className="fx-link-plane">✈</span>
                 <span className="fx-link-line" />
+                <span className="fx-link-dot" />
               </div>
               <Endpoint kind="ARRIVAL" code={focus.destination} city={focus.destName} />
-            </>
+            </div>
           ) : (
             <div className="fx-noroute">
               <span className="fx-noroute-title">NO ROUTE FILED</span>
@@ -161,63 +163,65 @@ export function CinematicOverlays({
         </section>
       )}
 
-      {/* ---------- contact list ---------- */}
-      <section className="panel panel-contacts">
-        <header className="panel-head">
-          <span className="panel-glyph">◈</span>
-          <span>LIVE TRAFFIC</span>
-        </header>
-
-        {contacts.length === 0 ? (
-          <div className="ct-empty">
-            {connected ? "No aircraft in range" : "Connecting to feed…"}
+      {/* ---------- left rail ---------- */}
+      <div className="hud-rail">
+        <section className="panel">
+          <header className="panel-head">
+            <span className="panel-glyph">▮</span>
+            <span>TELEMETRY</span>
+          </header>
+          <div className="tm-grid">
+            <Cell label="AIRBORNE" value={String(stats.airborne)} />
+            <Cell label="GROUND" value={String(stats.ground)} />
+            <Cell label="CLIMB" value={String(stats.climbing)} />
+            <Cell label="DESCEND" value={String(stats.descending)} />
           </div>
-        ) : (
-          <div className="ct-list">
-            {contacts.map((ac) => (
-              <button
-                type="button"
-                key={ac.hex}
-                className={"ct-row" + (ac.hex === selectedHex ? " active" : "")}
-                onClick={() => onSelect(ac.hex)}
-              >
-                <span className="ct-call">{(ac.flight || ac.hex).toUpperCase()}</span>
-                <span className="ct-route">
-                  {ac.origin && ac.destination
-                    ? `${ac.origin} → ${ac.destination}`
-                    : ac.typeCode || "—"}
-                </span>
-                <span className="ct-alt">{shortAlt(ac)}</span>
-              </button>
-            ))}
+          <div className="tm-foot">
+            <span>{(source || "AIRPLANES.LIVE").toUpperCase()}</span>
+            <span>{fixAge == null ? "—" : `FIX ${Math.min(fixAge, 99)}s`}</span>
           </div>
-        )}
-      </section>
+        </section>
 
-      {/* ---------- telemetry ---------- */}
-      <section className="panel panel-telemetry">
-        <header className="panel-head">
-          <span className="panel-glyph">▮</span>
-          <span>TELEMETRY</span>
-        </header>
-        <div className="tm-grid">
-          <Cell label="AIRBORNE" value={String(stats.airborne)} />
-          <Cell label="GROUND" value={String(stats.ground)} />
-          <Cell label="CLIMB" value={String(stats.climbing)} />
-          <Cell label="DESCEND" value={String(stats.descending)} />
-        </div>
-        <div className="tm-foot">
-          <span>{(source || "AIRPLANES.LIVE").toUpperCase()}</span>
-          <span>{fixAge == null ? "—" : `FIX ${Math.min(fixAge, 99)}s`}</span>
-        </div>
-      </section>
+        <section className="panel panel-contacts">
+          <header className="panel-head">
+            <span className="panel-glyph">◈</span>
+            <span>LIVE TRAFFIC</span>
+            <span className="panel-tag">{contacts.length}</span>
+          </header>
+
+          {contacts.length === 0 ? (
+            <div className="ct-empty">
+              {connected ? "No aircraft in range" : "Connecting to feed…"}
+            </div>
+          ) : (
+            <div className="ct-list">
+              {contacts.map((ac) => (
+                <button
+                  type="button"
+                  key={ac.hex}
+                  className={"ct-row" + (ac.hex === selectedHex ? " active" : "")}
+                  onClick={() => onSelect(ac.hex)}
+                >
+                  <span className="ct-call">{(ac.flight || ac.hex).toUpperCase()}</span>
+                  <span className="ct-route">
+                    {ac.origin && ac.destination
+                      ? `${ac.origin} → ${ac.destination}`
+                      : ac.typeCode || "—"}
+                  </span>
+                  <span className="ct-alt">{shortAlt(ac)}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
 
       {/* ---------- credit ---------- */}
       <footer className="hud-credit">
         <span>Vibe coded by Tejaswi</span>
         <span className="hud-credit-dot">·</span>
         <span>
-          building with <span className="hud-credit-heart">♥</span> and Microsoft Scout
+          built with <span className="hud-credit-heart">♥</span> and Microsoft Scout
         </span>
       </footer>
     </div>

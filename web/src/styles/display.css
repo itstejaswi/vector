@@ -343,17 +343,18 @@ button {
 .panel-flight {
   top: 78px;
   right: 24px;
-  width: 272px;
+  width: 292px;
 }
 
 .fx-call {
-  padding: 14px 16px 12px;
+  padding: 14px 16px 13px;
   border-bottom: 0.5px solid var(--hairline);
+  text-align: center;
 }
 
 .fx-call-id {
   display: block;
-  font-size: 21px;
+  font-size: 22px;
   font-weight: 600;
   /* Apple tightens tracking as size grows. */
   letter-spacing: -0.02em;
@@ -369,62 +370,78 @@ button {
   color: var(--text-2);
 }
 
+/* Origin and destination sit side by side with the connector between them,
+   so the card reads as a journey and no column is left half empty. */
+.fx-route {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 4px;
+  padding: 16px 14px 14px;
+}
+
 .fx-end {
-  padding: 12px 16px 10px;
+  min-width: 0;
+  text-align: center;
 }
 
 .fx-end-kind {
-  font-size: 9.5px;
+  font-size: 9px;
   font-weight: 600;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.11em;
   color: var(--text-3);
   text-transform: uppercase;
 }
 
 .fx-end-code {
-  margin-top: 4px;
-  font-size: 30px;
+  margin-top: 5px;
+  font-size: 32px;
   font-weight: 300;
-  line-height: 1.05;
-  letter-spacing: -0.02em;
+  line-height: 1;
+  letter-spacing: -0.03em;
   color: var(--amber-bright);
 }
 
 .fx-end-city {
-  margin-top: 3px;
-  font-size: 12px;
+  margin-top: 4px;
+  font-size: 11px;
   color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .fx-link {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 2px 16px;
+  gap: 3px;
+  padding: 0 6px;
+  margin-top: 6px;
 }
 
 .fx-link-line {
-  flex: 1;
+  width: 14px;
   height: 0.5px;
-  background: linear-gradient(
-    to right,
-    transparent,
-    rgba(255, 170, 61, 0.35),
-    transparent
-  );
+  background: rgba(255, 170, 61, 0.4);
+}
+
+.fx-link-dot {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: rgba(255, 170, 61, 0.5);
 }
 
 .fx-link-plane {
   color: var(--amber);
-  font-size: 11px;
+  font-size: 12px;
+  /* Nose points along the route, left to right. */
   transform: rotate(90deg);
-  opacity: 0.8;
 }
 
 .fx-rows {
-  padding: 6px 0 8px;
+  padding: 8px 0 10px;
   border-top: 0.5px solid var(--hairline);
-  margin-top: 10px;
 }
 
 .fx-row {
@@ -487,16 +504,39 @@ button {
   color: var(--text-3);
 }
 
-/* ---------------- contacts ---------------- */
+/* ---------------- left rail ---------------- */
 
-.panel-contacts {
+/* Telemetry and the contact list stack as one column, so neither needs a
+   magic top offset and they can never overlap. */
+.hud-rail {
+  position: absolute;
   left: 24px;
-  bottom: 60px;
-  width: 262px;
+  top: 100px;
+  bottom: 62px;
+  width: 268px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: none;
 }
 
+.hud-rail > .panel {
+  position: static;
+  pointer-events: auto;
+}
+
+/* The contact list is the flexible one: it takes whatever height is left. */
+.hud-rail > .panel-contacts {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------------- contacts ---------------- */
+
 .ct-list {
-  max-height: 224px;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
@@ -563,12 +603,6 @@ button {
 }
 
 /* ---------------- telemetry ---------------- */
-
-.panel-telemetry {
-  left: 24px;
-  top: 140px;
-  width: 216px;
-}
 
 .tm-grid {
   display: grid;
@@ -880,23 +914,26 @@ button {
 
 /* ---------------- responsive ---------------- */
 
-@media (max-width: 940px) {
-  .panel-telemetry {
-    display: none;
-  }
+@media (max-width: 1100px) {
   .panel-flight {
-    width: 244px;
+    width: 268px;
     top: 70px;
     right: 16px;
   }
-  .panel-contacts {
-    width: 216px;
+  .hud-rail {
+    width: 236px;
     left: 16px;
-    bottom: 56px;
+    top: 96px;
   }
   .loc-box {
-    width: 268px;
+    width: 236px;
     left: 16px;
+  }
+}
+
+@media (max-width: 900px) {
+  .hud-rail > .panel:first-child {
+    display: none;
   }
   .hud-strip {
     display: none;
@@ -904,7 +941,7 @@ button {
 }
 
 @media (max-width: 640px) {
-  .panel-contacts,
+  .hud-rail,
   .hud-bk {
     display: none;
   }
@@ -929,6 +966,9 @@ button {
     bottom: 12px;
     font-size: 10px;
     padding: 6px 12px;
+  }
+  .fx-end-code {
+    font-size: 28px;
   }
 }
 

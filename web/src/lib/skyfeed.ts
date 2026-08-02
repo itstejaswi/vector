@@ -102,12 +102,25 @@ interface Sticky extends RouteInfo, TypeInfo {
   lastSeen: number;
 }
 
+/**
+ * Clean a raw callsign. ADS-B decoders pad or fill undecodable characters
+ * with '@' and '_', which otherwise show up on the map as "@@@@@@@@".
+ * Returns undefined when nothing usable is left.
+ *
+ * Exported for tests.
+ */
+export function cleanCallsign(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  const cleaned = raw.replace(/[@_]/g, "").trim().toUpperCase();
+  return cleaned.length >= 2 ? cleaned : undefined;
+}
+
 function normalize(raw: RawAircraft, ts: number): Aircraft | null {
   if (!raw.hex) return null;
   const onGround = raw.alt_baro === "ground";
   return {
     hex: raw.hex,
-    flight: raw.flight?.trim() || undefined,
+    flight: cleanCallsign(raw.flight),
     lat: raw.lat,
     lon: raw.lon,
     altBaro: onGround ? null : (raw.alt_baro as number | undefined) ?? null,

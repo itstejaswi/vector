@@ -10,6 +10,7 @@ import {
   greatCirclePoints,
 } from "@shared/index.js";
 import { lookupAirport } from "./airportCoords.js";
+import { MotionModel } from "../lib/motion.js";
 
 interface Props {
   centerLat: number;
@@ -70,12 +71,18 @@ export function GeoMapLayer({
   const readyRef = useRef(false);
   /** Source updates that arrived before the style finished loading. */
   const pendingRef = useRef<Array<(m: maplibregl.Map) => void>>([]);
+  /** Dead-reckoning between polls, stepped by our own animation loop. */
+  const motionRef = useRef(new MotionModel());
+  /** Which aircraft get a callsign label this frame. */
+  const labelledRef = useRef<Set<string>>(new Set());
 
   // Refs so map handlers always see current values without re-binding.
   const aircraftRef = useRef(aircraft);
   const onClickRef = useRef(onClickAircraft);
+  const selectedRef = useRef(selectedAircraft);
   aircraftRef.current = aircraft;
   onClickRef.current = onClickAircraft;
+  selectedRef.current = selectedAircraft;
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -431,12 +438,8 @@ export function GeoMapLayer({
   // world scale the ring is a meaningless dot around the origin airport.
   useEffect(() => {
     whenReady((map) => {
-      const routeView = !!(
-        selectedAircraft &&
-        (selectedAircraft.originLat != null || lookupAirport(selectedAircraft.origin)) &&
-        (selectedAircraft.destLat != null || lookupAirport(selectedAircraft.destination))
-      );
-      const vis = routeView ? "none" : "visible";
+      const routeMode = routeView(selectedAircraft);
+      const vis = routeMode ? "none" : "visible";
       for (const id of ["range-ring-fill", "range-ring-line", "center-pt-ring"]) {
         if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", vis);
       }
@@ -474,11 +477,17 @@ export function GeoMapLayer({
     selectedAircraft?.destination,
   ]);
 
-  // Ground tracks.
+  // Ground tracks. Hidden in route view: at continental zoom a 50 km track
+  // collapses into a spiky blob around each aircraft.
   useEffect(() => {
     whenReady((map) => {
       const src = map.getSource("trails") as maplibregl.GeoJSONSource | undefined;
       if (!src) return;
+
+      if (routeView(selectedAircraft)) {
+        src.setData(EMPTY);
+        return;
+      }
 
       const features: GeoJSON.Feature[] = [];
       for (const ac of aircraft) {
@@ -497,70 +506,92 @@ export function GeoMapLayer({
     });
   }, [trails, aircraft, selectedAircraft?.hex]);
 
-  // Aircraft positions.
+  // Feed each new snapshot into the motion model and recompute which aircraft
+  // are close enough to deserve a label.
   useEffect(() => {
-    whenReady((map) => {
+    motionRef.current.update(aircraft, Date.now());
+
+    // Busy airspace turns a full label set into noise, so only the closest
+    // few (plus the selection) get named; the rest are glyphs until picked.
+    const labelled = new Set<string>();
+    aircraft
+      .filter((ac) => ac.lat != null && ac.lon != null)
+      .map((ac) => ({ hex: ac.hex, d: distSq(ac.lat!, ac.lon!, centerLat, centerLon) }))
+      .sort((a, b) => a.d - b.d)
+      .slice(0, LABEL_LIMIT)
+      .forEach((e) => labelled.add(e.hex));
+    if (selectedAircraft) labelled.add(selectedAircraft.hex);
+    labelledRef.current = labelled;
+  }, [aircraft, selectedAircraft?.hex, centerLat, centerLon]);
+
+  // Animate positions straight into the map source. Deliberately outside
+  // React's render cycle: setting state per frame would re-render the whole
+  // tree 60 times a second and stall the map.
+  useEffect(() => {
+    let raf = 0;
+
+    const frame = () => {
+      raf = requestAnimationFrame(frame);
+
+      const map = mapRef.current;
+      if (!map || !readyRef.current) return;
       const src = map.getSource("aircraft") as maplibregl.GeoJSONSource | undefined;
       if (!src) return;
 
-      const positioned = aircraft.filter((ac) => ac.lat != null && ac.lon != null);
+      const motion = motionRef.current;
+      motion.step(Date.now());
 
-      // Busy airspace turns a full label set into noise, so only the closest
-      // few (plus the selection) get named; the rest are glyphs until picked.
-      const labelled = new Set<string>();
-      positioned
-        .map((ac) => ({
-          hex: ac.hex,
-          d: distSq(ac.lat!, ac.lon!, centerLat, centerLon),
-        }))
-        .sort((a, b) => a.d - b.d)
-        .slice(0, LABEL_LIMIT)
-        .forEach((e) => labelled.add(e.hex));
-      if (selectedAircraft) labelled.add(selectedAircraft.hex);
+      const labelled = labelledRef.current;
+      const selHex = selectedRef.current?.hex;
+      const features: GeoJSON.Feature[] = [];
 
-      src.setData({
-        type: "FeatureCollection",
-        features: positioned.map((ac) => ({
-          type: "Feature" as const,
+      for (const ac of aircraftRef.current) {
+        const pos = motion.positionOf(ac.hex);
+        if (!pos) continue;
+        const color = altitudeColor(ac);
+        features.push({
+          type: "Feature",
           properties: {
             hex: ac.hex,
             track: ac.track ?? 0,
-            color: altitudeColor(ac),
-            icon: iconId(altitudeColor(ac)),
+            color,
+            icon: iconId(color),
             label: (ac.flight || ac.hex).toUpperCase(),
             lbl: labelled.has(ac.hex),
-            sel: ac.hex === selectedAircraft?.hex,
+            sel: ac.hex === selHex,
             vs: verticalGlyph(ac),
             vsColor: verticalColor(ac),
           },
-          geometry: { type: "Point" as const, coordinates: [ac.lon!, ac.lat!] },
-        })),
-      });
-    });
-  }, [aircraft, selectedAircraft?.hex, centerLat, centerLon]);
+          geometry: { type: "Point", coordinates: [pos.lon, pos.lat] },
+        });
+      }
 
-  // Selection ring.
-  useEffect(() => {
-    whenReady((map) => {
-      const src = map.getSource("selected-ac") as maplibregl.GeoJSONSource | undefined;
-      if (!src) return;
-      const sel = selectedAircraft;
-      src.setData(
-        sel && sel.lat != null && sel.lon != null
-          ? {
-              type: "FeatureCollection",
-              features: [
-                {
-                  type: "Feature",
-                  properties: {},
-                  geometry: { type: "Point", coordinates: [sel.lon, sel.lat] },
-                },
-              ],
-            }
-          : EMPTY,
-      );
-    });
-  }, [selectedAircraft?.hex, selectedAircraft?.lat, selectedAircraft?.lon]);
+      src.setData({ type: "FeatureCollection", features });
+
+      // The selection ring rides along with the animated position.
+      const ringSrc = map.getSource("selected-ac") as maplibregl.GeoJSONSource | undefined;
+      if (ringSrc) {
+        const selPos = selHex ? motion.positionOf(selHex) : null;
+        ringSrc.setData(
+          selPos
+            ? {
+                type: "FeatureCollection",
+                features: [
+                  {
+                    type: "Feature",
+                    properties: {},
+                    geometry: { type: "Point", coordinates: [selPos.lon, selPos.lat] },
+                  },
+                ],
+              }
+            : EMPTY,
+        );
+      }
+    };
+
+    raf = requestAnimationFrame(frame);
+    return () => cancelAnimationFrame(raf);
+  }, []);
 
   // Route arc + endpoint pins for the selected flight.
   useEffect(() => {
@@ -650,6 +681,18 @@ function altitudeColor(ac: Aircraft): string {
     if (alt >= floor) color = c;
   }
   return color;
+}
+
+/**
+ * True when a selected flight has both endpoints resolvable, meaning the map
+ * is showing its whole route rather than the local radius. Several layers key
+ * off this: the range ring and ground tracks are meaningless at that scale.
+ */
+function routeView(sel: Aircraft | null): boolean {
+  if (!sel) return false;
+  const hasOrigin = sel.originLat != null || lookupAirport(sel.origin) != null;
+  const hasDest = sel.destLat != null || lookupAirport(sel.destination) != null;
+  return hasOrigin && hasDest;
 }
 
 /** Climb/descent marker - makes departures and arrivals readable at a glance. */

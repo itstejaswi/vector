@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Config } from "@shared/index.js";
 import { DEFAULT_CONFIG, MAX_RADIUS_MILES, MIN_RADIUS_MILES } from "@shared/index.js";
 import { useStream } from "../lib/useStream.js";
-import { useSmoothAircraft } from "../lib/useSmoothAircraft.js";
 import { GeoMapLayer } from "./GeoMapLayer.js";
 import { CinematicOverlays } from "./CinematicOverlays.js";
 import { LocationBox } from "./LocationBox.js";
@@ -24,9 +23,6 @@ const RADIUS_STEPS = [
 export function Display() {
   const { state, conn } = useStream();
 
-  // Positions advance between polls so aircraft glide instead of jumping.
-  const aircraft = useSmoothAircraft(state.aircraft, state.now);
-
   const configRef = useRef<Config>(state.config ?? DEFAULT_CONFIG);
   configRef.current = state.config ?? DEFAULT_CONFIG;
 
@@ -34,8 +30,9 @@ export function Display() {
   const [centerVersion, setCenterVersion] = useState(0);
 
   const selectedAircraft = useMemo(
-    () => (selectedHex ? aircraft.find((a) => a.hex === selectedHex) ?? null : null),
-    [selectedHex, aircraft],
+    () =>
+      selectedHex ? state.aircraft.find((a) => a.hex === selectedHex) ?? null : null,
+    [selectedHex, state.aircraft],
   );
 
   const handleSelect = useCallback((hex: string | null) => setSelectedHex(hex), []);
