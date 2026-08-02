@@ -1,12 +1,13 @@
-# Skylight
+# Vector
 
 Live flight tracking for anywhere on Earth, in the browser. No server, no API
 keys, no build-time secrets — just a static site that talks directly to public
 aviation APIs.
 
-Point it at any coordinates, airport code, or place name and watch the traffic
-overhead: altitude-coloured aircraft, ground tracks, and the great-circle route
-of whichever flight you select.
+Named for the heading a controller gives an aircraft — and for what every fix
+really is: a direction and a magnitude. Point it at any coordinates, airport
+code, or place name and watch the traffic overhead: altitude-coloured aircraft,
+ground tracks, and the great-circle route of whichever flight you select.
 
 ## Features
 
@@ -90,7 +91,7 @@ data from [adsbdb](https://api.adsbdb.com). Geocoding by
 Basemap tiles © [CARTO](https://carto.com), © OpenStreetMap contributors.
 Airport coordinates from [OurAirports](https://ourairports.com) (CC0).
 
-This project began as a fork of
+Vector began as a fork of
 [cpaczek/skylight](https://github.com/cpaczek/skylight), an RTL-SDR ceiling
 projector, and was rebuilt as a browser-only tracker. The original MIT licence
 and copyright are retained in [LICENSE](LICENSE).

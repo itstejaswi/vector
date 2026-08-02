@@ -84,7 +84,7 @@ export function Display() {
   }, [handleZoomIn, handleZoomOut]);
 
   const cfg = state.config;
-  if (!cfg) return <div className="boot">INITIALISING…</div>;
+  if (!cfg) return <div className="boot">VECTOR</div>;
 
   return (
     <div className="display-root">

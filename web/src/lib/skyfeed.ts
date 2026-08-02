@@ -17,8 +17,13 @@ import {
 const AIRCRAFT_API = "https://api.airplanes.live/v2/point";
 const ADSBDB_API = "https://api.adsbdb.com/v0";
 
-const CONFIG_KEY = "skylight.config";
-const ROUTE_CACHE_KEY = "skylight.routes";
+const CONFIG_KEY = "vector.config";
+const ROUTE_CACHE_KEY = "vector.routes";
+/** Keys used before the project was renamed from Skylight to Vector. */
+const LEGACY_KEYS: Record<string, string> = {
+  "skylight.config": CONFIG_KEY,
+  "skylight.routes": ROUTE_CACHE_KEY,
+};
 
 const POLL_MS = 3000;
 const NM_PER_MILE = 0.868976;
@@ -169,6 +174,25 @@ function trimTrail(trail: [number, number][]): void {
   if (cut > 0) trail.splice(0, cut);
 }
 
+/**
+ * Carry settings over from the pre-rename storage keys, once. Without this a
+ * returning user silently loses their location and cached routes.
+ */
+function migrateLegacyStorage(): void {
+  try {
+    for (const [oldKey, newKey] of Object.entries(LEGACY_KEYS)) {
+      const value = localStorage.getItem(oldKey);
+      if (value === null) continue;
+      if (localStorage.getItem(newKey) === null) {
+        localStorage.setItem(newKey, value);
+      }
+      localStorage.removeItem(oldKey);
+    }
+  } catch {
+    // storage blocked — nothing to migrate, carry on with defaults
+  }
+}
+
 function loadConfig(): Config {
   try {
     const raw = localStorage.getItem(CONFIG_KEY);
@@ -219,6 +243,7 @@ export class SkyFeed {
 
   connect(): void {
     this.closed = false;
+    migrateLegacyStorage();
     this.cache = loadRouteCache();
     this.update({ config: loadConfig() });
 

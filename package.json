@@ -1,8 +1,8 @@
 {
-  "name": "skylight-web",
+  "name": "vector",
   "version": "1.0.0",
   "private": true,
-  "description": "Skylight — a browser-only live flight tracker. Point it anywhere on Earth and watch the sky.",
+  "description": "Vector — a browser-only live flight tracker. Point it anywhere on Earth and watch what is overhead.",
   "type": "module",
   "packageManager": "pnpm@10.28.2",
   "scripts": {

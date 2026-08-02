@@ -1,5 +1,5 @@
 /* ============================================================================
-   Skylight — amber HUD over a dark map.
+   Vector - amber HUD over a dark map.
 
    Visual language borrows from Apple's: SF Pro type with optical tracking,
    translucent "materials" that blur AND saturate what's behind them, hairline
@@ -74,10 +74,13 @@ button {
   display: grid;
   place-items: center;
   height: 100%;
-  font-size: 13px;
-  font-weight: 500;
-  letter-spacing: 0.16em;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.42em;
+  /* Optical centring: the tracking adds a trailing gap on the last letter. */
+  text-indent: 0.42em;
   color: var(--amber);
+  animation: breathe 1.8s var(--ease) infinite;
 }
 
 /* ---------------- map ---------------- */
@@ -178,6 +181,13 @@ button {
   white-space: nowrap;
   max-width: calc(100vw - 48px);
   overflow: hidden;
+}
+
+.hud-wordmark {
+  color: var(--amber);
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  font-size: 10.5px;
 }
 
 .hud-strip-name {

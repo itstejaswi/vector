@@ -12,7 +12,9 @@ import { formatLatLon } from "@shared/index.js";
 import { AIRPORT_COORDS } from "../display/airportCoords.js";
 
 const NOMINATIM = "https://nominatim.openstreetmap.org/search";
-const RECENTS_KEY = "skylight.recentPlaces";
+const RECENTS_KEY = "vector.recentPlaces";
+/** Key used before the project was renamed from Skylight to Vector. */
+const LEGACY_RECENTS_KEY = "skylight.recentPlaces";
 const MAX_RECENTS = 8;
 
 export interface ResolvedPlace {
@@ -175,7 +177,9 @@ export interface RecentPlace {
 
 export function loadRecents(): RecentPlace[] {
   try {
-    const raw = localStorage.getItem(RECENTS_KEY);
+    // Fall back to the pre-rename key so returning users keep their history.
+    const raw =
+      localStorage.getItem(RECENTS_KEY) ?? localStorage.getItem(LEGACY_RECENTS_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? (parsed as RecentPlace[]) : [];
@@ -191,6 +195,7 @@ export function pushRecent(place: RecentPlace): RecentPlace[] {
   const next = [place, ...existing].slice(0, MAX_RECENTS);
   try {
     localStorage.setItem(RECENTS_KEY, JSON.stringify(next));
+    localStorage.removeItem(LEGACY_RECENTS_KEY);
   } catch {
     // ignore
   }

@@ -84,6 +84,8 @@ export function CinematicOverlays({
 
       {/* ---------- top status strip ---------- */}
       <div className="hud-strip">
+        <span className="hud-wordmark">VECTOR</span>
+        <span className="hud-strip-sep" />
         <span className={"hud-dot " + (connected ? "ok" : "bad")} />
         <span className="hud-strip-name">{locationName || "UNKNOWN"}</span>
         <span className="hud-strip-sep" />
