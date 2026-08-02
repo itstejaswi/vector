@@ -892,9 +892,31 @@ button {
   text-transform: uppercase;
 }
 
+.loc-list {
+  max-height: 46vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+.loc-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.loc-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.loc-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 3px;
+}
+
 .loc-item {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
   width: 100%;
@@ -910,11 +932,28 @@ button {
   background: rgba(255, 255, 255, 0.07);
 }
 
+.loc-item-main {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
 .loc-item-label {
   font-size: 13px;
   font-weight: 400;
   letter-spacing: -0.01em;
   color: var(--text);
+  flex: none;
+}
+
+.loc-item-sub {
+  font-size: 12px;
+  color: var(--text-2);
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .loc-item-detail {
@@ -1128,10 +1167,28 @@ button {
     left: 10px;
     right: 10px;
     width: auto;
+    /* The desktop clamp is calc(100vw - 48px), which leaves a dead gap on the
+       right once left/right are both 10px. Let the inset drive the width. */
+    max-width: none;
   }
 
   .loc-field {
     height: 44px;
+  }
+
+  /* Comfortable thumb targets, and never taller than the space above the
+     on-screen keyboard. */
+  .loc-item {
+    padding: 12px 14px;
+    min-height: 44px;
+  }
+
+  .loc-list {
+    max-height: 40vh;
+  }
+
+  .loc-search {
+    padding: 14px;
   }
 
   .loc-current {
