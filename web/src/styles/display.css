@@ -1466,6 +1466,67 @@ button {
   }
 }
 
+/* ---------------- cursor glow ---------------- */
+
+/*
+ * A soft light that follows the cursor across the HUD surfaces.
+ *
+ * The gradient is painted into a pseudo-element rather than the panel's own
+ * background, so it layers over the frosted material without disturbing it.
+ * --gx / --gy are written by useCursorGlow, one element at a time and at most
+ * once per animation frame.
+ *
+ * Only the statically-positioned surfaces get position: relative here. The
+ * rest are already absolute, which makes them a containing block anyway - and
+ * blanket-setting relative on them collapses the layout, since it discards
+ * their top/left offsets. (.hud-strip is left out entirely: it's a readout
+ * with pointer-events: none, so it can never be hovered.)
+ */
+@media (pointer: fine) {
+  .hud-rail .panel,
+  .loc-field,
+  .loc-panel {
+    position: relative;
+  }
+
+  .panel::before,
+  .sheet::before,
+  .loc-field::before,
+  .loc-panel::before,
+  .hud-brand::before,
+  .hud-zoom::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    border-radius: inherit;
+    opacity: 0;
+    transition: opacity 0.32s var(--ease);
+    background: radial-gradient(
+      circle 130px at var(--gx, 50%) var(--gy, 50%),
+      rgba(255, 170, 61, 0.09),
+      rgba(255, 170, 61, 0.035) 42%,
+      transparent 72%
+    );
+  }
+
+  .glow::before {
+    opacity: 1;
+  }
+
+  /* Lift the real content above the glow layer. */
+  .panel > *,
+  .sheet > *,
+  .loc-field > *,
+  .loc-panel > *,
+  .hud-brand > *,
+  .hud-zoom > * {
+    position: relative;
+    z-index: 1;
+  }
+}
+
 /* ---------------- cursor ---------------- */
 
 /*

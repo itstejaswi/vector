@@ -8,6 +8,7 @@ import { GeoMapLayer } from "./GeoMapLayer.js";
 import { AircraftCanvas } from "./AircraftCanvas.js";
 import { CinematicOverlays } from "./CinematicOverlays.js";
 import { LocationBox } from "./LocationBox.js";
+import { useCursorGlow } from "./useCursorGlow.js";
 import type { FlightHit } from "../lib/flights.js";
 
 /**
@@ -26,6 +27,8 @@ const RADIUS_STEPS = [
 
 export function Display() {
   const { state, conn } = useStream();
+
+  useCursorGlow();
 
   const configRef = useRef<Config>(state.config ?? DEFAULT_CONFIG);
   configRef.current = state.config ?? DEFAULT_CONFIG;
