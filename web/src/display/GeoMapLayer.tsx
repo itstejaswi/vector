@@ -330,7 +330,10 @@ export function GeoMapLayer({
           break;
         }
       }
-      map.getCanvas().style.cursor = near ? "pointer" : "";
+      // Toggle a class rather than writing style.cursor directly: an inline
+      // style beats any stylesheet rule, so setting "pointer" here would
+      // override the HUD reticle every time the mouse neared an aircraft.
+      map.getCanvas().classList.toggle("over-aircraft", near);
     });
 
     return () => {

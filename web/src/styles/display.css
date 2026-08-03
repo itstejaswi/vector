@@ -1450,30 +1450,40 @@ button {
 /* ---------------- cursor ---------------- */
 
 /*
- * A HUD reticle over the map, in place of the OS arrow.
+ * The brand mark's swept delta, reused as the pointer. Same geometry as the
+ * logo, rotated to the angle an arrow cursor points.
  *
- * Inline SVG data-URIs: no extra network request, and the whole thing is
- * under a kilobyte before gzip. There's no JavaScript involved - the browser
- * composites the cursor itself, so it costs nothing per frame.
+ * Inline SVG data-URIs: no extra network request, and no JavaScript - the
+ * browser composites the cursor itself, so it costs nothing per frame. Both
+ * states together are well under a kilobyte.
  *
- * Every stroke carries a dark halo underneath. The map runs from near-black
- * ocean to pale coastline, and a plain amber cursor disappears over the light
- * areas. The trailing "12 12" is the hotspot: the reticle's centre, not its
- * top-left corner, is the point being clicked.
+ * The dark outline matters. The map runs from near-black ocean to pale
+ * coastline, and a plain amber arrow disappears over the light areas.
  *
- * Fine-pointer only. Touch devices have no cursor, and a custom one on a
- * hybrid laptop with a touchscreen would apply for no reason.
+ * The trailing "3 2" is the hotspot, placed on the delta's nose - the tip is
+ * the point being clicked, not the top-left of the image.
+ *
+ * This block lives at the end of the file on purpose: several component rules
+ * set cursor: pointer, and at equal specificity the later rule wins.
+ *
+ * Fine-pointer only. Touch devices have no cursor at all.
  */
 @media (pointer: fine) {
-  .display-root {
-    cursor:
-      url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='24'%20height='24'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M12%202.5V8M12%2016v5.5M2.5%2012H8M16%2012h5.5'%20fill='none'%20stroke='%23000'%20stroke-opacity='0.55'%20stroke-width='3.4'%20stroke-linecap='round'/%3E%3Cpath%20d='M12%202.5V8M12%2016v5.5M2.5%2012H8M16%2012h5.5'%20fill='none'%20stroke='%23ffaa3d'%20stroke-width='1.5'%20stroke-linecap='round'/%3E%3Ccircle%20cx='12'%20cy='12'%20r='2.4'%20fill='none'%20stroke='%23000'%20stroke-opacity='0.55'%20stroke-width='3'/%3E%3Ccircle%20cx='12'%20cy='12'%20r='2.4'%20fill='none'%20stroke='%23ffaa3d'%20stroke-width='1.3'/%3E%3Ccircle%20cx='12'%20cy='12'%20r='0.9'%20fill='%23ffd9a0'/%3E%3C/svg%3E")
-        12 12,
-      crosshair;
+  /* MapLibre puts cursor: grab on its own interactive container, which would
+     otherwise claim the whole map - and the map is most of the screen. The
+     arrow stays; grabbing still takes over mid-drag, below. */
+  .display-root,
+  .maplibregl-canvas-container.maplibregl-interactive,
+  .maplibregl-canvas {
+    cursor: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='24'%20height='24'%20viewBox='0%200%2024%2024'%3E%3Cpath%20transform='translate(3%202.5)%20rotate(-38)%20scale(0.95)%20translate(0%209.2)'%20d='M0%20-9.2%20L6.2%207.4%20L0%204.2%20L-6.2%207.4Z'%20fill='%23ffaa3d'%20stroke='%23000'%20stroke-opacity='0.6'%20stroke-width='2.4'%20stroke-linejoin='round'/%3E%3C/svg%3E") 3 2, default;
   }
 
-  /* Anything clickable gets a brighter, tighter reticle, so the cursor itself
-     signals the target rather than relying on hover styling alone. */
+  /*
+   * Brighter over anything clickable, so the cursor itself signals the target.
+   * .over-aircraft is toggled by the map layer when the pointer nears an
+   * aircraft; it has to be a class rather than an inline style, because an
+   * inline style would beat these rules outright.
+   */
   .hud button,
   .hud a,
   .loc-item,
@@ -1481,17 +1491,14 @@ button {
   .loc-gps,
   .ct-row,
   .sheet-peek,
-  .maplibregl-canvas {
-    cursor:
-      url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='24'%20height='24'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M12%203.5V9M12%2015v5.5M3.5%2012H9M15%2012h5.5'%20fill='none'%20stroke='%23000'%20stroke-opacity='0.55'%20stroke-width='3.4'%20stroke-linecap='round'/%3E%3Cpath%20d='M12%203.5V9M12%2015v5.5M3.5%2012H9M15%2012h5.5'%20fill='none'%20stroke='%23ffd9a0'%20stroke-width='1.6'%20stroke-linecap='round'/%3E%3Ccircle%20cx='12'%20cy='12'%20r='3.4'%20fill='none'%20stroke='%23000'%20stroke-opacity='0.55'%20stroke-width='3'/%3E%3Ccircle%20cx='12'%20cy='12'%20r='3.4'%20fill='none'%20stroke='%23ffd9a0'%20stroke-width='1.4'/%3E%3Ccircle%20cx='12'%20cy='12'%20r='1.1'%20fill='%23fff'/%3E%3C/svg%3E")
-        12 12,
-      pointer;
+  .maplibregl-canvas.over-aircraft {
+    cursor: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='24'%20height='24'%20viewBox='0%200%2024%2024'%3E%3Cpath%20transform='translate(3%202.5)%20rotate(-38)%20scale(0.95)%20translate(0%209.2)'%20d='M0%20-9.2%20L6.2%207.4%20L0%204.2%20L-6.2%207.4Z'%20fill='%23ffd9a0'%20stroke='%23000'%20stroke-opacity='0.6'%20stroke-width='2.4'%20stroke-linejoin='round'/%3E%3C/svg%3E") 3 2, pointer;
   }
 
-  /* Dragging the map is the one place a reticle reads wrong - the OS grab
-     hand says "you're moving this", which is exactly right. */
+  /* Dragging the map is the one place an arrow reads wrong - the OS grab hand
+     says "you're moving this", which is exactly right. */
   .maplibregl-canvas-container.maplibregl-interactive:active,
-  .maplibregl-canvas-container.mapboxgl-track-pointer {
+  .maplibregl-canvas-container.maplibregl-interactive:active .maplibregl-canvas {
     cursor: grabbing;
   }
 
