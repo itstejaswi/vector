@@ -206,7 +206,7 @@ button {
   box-sizing: border-box;
   background: var(--material);
   border: 0.5px solid var(--stroke);
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   backdrop-filter: var(--blur);
   -webkit-backdrop-filter: var(--blur);
   box-shadow: var(--shadow);
@@ -244,6 +244,11 @@ button {
   color: var(--text-3);
 }
 
+/*
+ * Status strip. Styled as a panel rather than a pill so it joins the same
+ * family as the tiles and the footer: same radius and hairline, and the type
+ * matches the panel headers.
+ */
 .hud-strip {
   position: absolute;
   top: 20px;
@@ -251,43 +256,53 @@ button {
   transform: translateX(-50%);
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 9px 18px;
+  gap: 13px;
+  padding: 0 16px;
   /* Match the brand lockup opposite it so the top row reads as one band. */
-  min-height: 37px;
+  height: 37px;
   box-sizing: border-box;
   background: var(--material);
   border: 0.5px solid var(--stroke);
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   backdrop-filter: var(--blur);
   -webkit-backdrop-filter: var(--blur);
   box-shadow: var(--shadow);
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  color: var(--text-2);
+  /* Header type: small, tracked, uppercase — as .panel-head. */
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-3);
   white-space: nowrap;
   max-width: calc(100vw - 48px);
   overflow: hidden;
+  /* Takes pointer events so the cursor glow can find it; it holds no controls,
+     so this costs nothing but the light. */
+  pointer-events: auto;
 }
 
+/* The location is the one thing here worth reading first. */
 .hud-strip-name {
   color: var(--text);
   font-weight: 600;
-  max-width: 32ch;
+  letter-spacing: 0.04em;
+  max-width: 28ch;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .hud-strip-sep {
   width: 0.5px;
-  height: 11px;
+  height: 12px;
   background: var(--stroke);
+  flex: none;
 }
 
 .hud-strip-clock {
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  text-transform: none;
   color: var(--text-2);
 }
 
@@ -1578,8 +1593,7 @@ button {
  * Only the statically-positioned surfaces get position: relative here. The
  * rest are already absolute, which makes them a containing block anyway - and
  * blanket-setting relative on them collapses the layout, since it discards
- * their top/left offsets. (.hud-strip is left out entirely: it's a readout
- * with pointer-events: none, so it can never be hovered.)
+ * their top/left offsets.
  */
 @media (pointer: fine) {
   .hud-rail .panel,
@@ -1593,6 +1607,8 @@ button {
   .loc-field::before,
   .loc-panel::before,
   .hud-brand::before,
+  .hud-strip::before,
+  .hud-credit::before,
   .hud-zoom::before {
     content: "";
     position: absolute;
@@ -1620,6 +1636,8 @@ button {
   .loc-field > *,
   .loc-panel > *,
   .hud-brand > *,
+  .hud-strip > *,
+  .hud-credit > *,
   .hud-zoom > * {
     position: relative;
     z-index: 1;

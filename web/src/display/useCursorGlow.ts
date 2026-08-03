@@ -13,9 +13,9 @@ import { useEffect } from "react";
  * costs a handful of style writes rather than hundreds.
  */
 
-/** Elements that light up. The strip is excluded: it's a readout with
- *  pointer-events: none, so it can never be hovered. */
-const SELECTOR = ".panel, .sheet, .loc-field, .loc-panel, .hud-brand, .hud-zoom";
+/** Elements that light up. */
+const SELECTOR =
+  ".panel, .sheet, .loc-field, .loc-panel, .hud-brand, .hud-strip, .hud-credit, .hud-zoom";
 
 export function useCursorGlow(enabled = true): void {
   useEffect(() => {

@@ -35,7 +35,16 @@ const POLL_MS = 3000;
 const NM_PER_MILE = 0.868976;
 /** airplanes.live caps the point query at 250 nm. */
 const MAX_RADIUS_NM = 250;
-const ROUTE_TTL_MS = 12 * 3600_000;
+/**
+ * How long enrichment stays cached.
+ *
+ * Seven days rather than twelve hours. An airframe's type and registration are
+ * effectively permanent, and a flight number's city pair changes with the
+ * season at most - so a short expiry buys nothing and costs a fresh round of
+ * lookups every half day. Both upstreams are free services; the cache is the
+ * main thing keeping the load off them.
+ */
+const ROUTE_TTL_MS = 7 * 24 * 3600_000;
 /** Cap the persisted enrichment cache so localStorage can't grow unbounded. */
 const MAX_CACHED_ROUTES = 900;
 /** Forget aircraft we haven't seen for this long. */
@@ -47,7 +56,32 @@ const MAX_TRAIL_POINTS = 120;
 /** Ignore absurd jumps (bad fix / hex reuse) rather than drawing a streak. */
 const MAX_TRAIL_JUMP_DEG = 2.5;
 /** Concurrent adsbdb lookups. Busy airspace would otherwise fire hundreds. */
-const MAX_INFLIGHT = 6;
+/**
+ * Cap on concurrent enrichment lookups.
+ *
+ * This limits parallelism but not rate: six requests can still leave in the
+ * same instant, and the next six the moment they land. ENRICH_MIN_GAP_MS is
+ * what actually paces them.
+ */
+const MAX_INFLIGHT = 4;
+
+/**
+ * Minimum spacing between enrichment requests, in milliseconds.
+ *
+ * adsbdb is a free service run by one person and publishes no quota, so the
+ * courteous thing is to stay well under anything that could look like abuse.
+ * Measured from a cold cache without this, a single tab pushed 1.93 requests
+ * a second; at 250 ms it settles to four, and because every result is cached
+ * for 12 hours - misses included - the rate falls to near zero within a
+ * minute of opening the page.
+ *
+ * The map feed is separately paced by POLL_MS: airplanes.live documents a
+ * limit of one request per second, and a 3 s poll sits at a third of that.
+ */
+const ENRICH_MIN_GAP_MS = 250;
+
+/** Cap on lookups held waiting. Excess is dropped and re-offered by a poll. */
+const MAX_ENRICH_QUEUE = 200;
 
 export interface StreamState {
   connected: boolean;
@@ -282,6 +316,12 @@ export class SkyFeed {
   private trails = new Map<string, [number, number][]>();
   /** Aircraft whose enrichment jumps the request queue, if any. */
   private priorityHex: string | null = null;
+  /** When the last enrichment request went out, for ENRICH_MIN_GAP_MS. */
+  private lastEnrichAt = 0;
+  /** Lookups waiting their turn, keyed so the same one is never queued twice. */
+  private enrichQueue = new Map<string, () => void>();
+  /** Drains enrichQueue at ENRICH_MIN_GAP_MS; null while the queue is empty. */
+  private drainTimer: ReturnType<typeof setInterval> | null = null;
 
   state: StreamState = {
     connected: false,
@@ -307,8 +347,11 @@ export class SkyFeed {
     this.closed = true;
     if (this.timer) clearInterval(this.timer);
     if (this.flushTimer) clearInterval(this.flushTimer);
+    if (this.drainTimer) clearInterval(this.drainTimer);
     this.timer = null;
     this.flushTimer = null;
+    this.drainTimer = null;
+    this.enrichQueue.clear();
     this.flushCache();
   }
 
@@ -498,6 +541,54 @@ export class SkyFeed {
     });
   }
 
+  /**
+   * Whether an enrichment request may go out now.
+   *
+   * `bypass` covers the two cases that have already earned a slot: a flight
+   * the user searched for, and a lookup released by the drain timer, which is
+   * itself the pacing.
+   *
+   * A hard gate without the queue would throttle to one lookup per poll, since
+   * every candidate is considered in the same tick and only the first would
+   * pass. Turned-away work is queued and drained on a timer instead, so the
+   * rate is steady rather than accidental.
+   */
+  private canEnrich(bypass: boolean): boolean {
+    if (bypass) return true;
+    if (this.inflight.size >= MAX_INFLIGHT) return false;
+    return Date.now() - this.lastEnrichAt >= ENRICH_MIN_GAP_MS;
+  }
+
+  /**
+   * Hold a lookup for later rather than dropping it.
+   *
+   * Deduplicated by key, and capped: if the queue is somehow long, the excess
+   * is simply forgotten and re-offered by a later poll. That keeps a backlog
+   * from building into a burst.
+   */
+  private queueEnrich(key: string, run: () => void): void {
+    if (this.inflight.has(key) || this.enrichQueue.has(key)) return;
+    if (this.enrichQueue.size >= MAX_ENRICH_QUEUE) return;
+    this.enrichQueue.set(key, run);
+    this.startDrain();
+  }
+
+  /** Release one queued lookup every ENRICH_MIN_GAP_MS until the queue empties. */
+  private startDrain(): void {
+    if (this.drainTimer !== null) return;
+    this.drainTimer = setInterval(() => {
+      if (this.closed || this.enrichQueue.size === 0) {
+        if (this.drainTimer !== null) clearInterval(this.drainTimer);
+        this.drainTimer = null;
+        return;
+      }
+      if (this.inflight.size >= MAX_INFLIGHT) return;
+      const [key, run] = this.enrichQueue.entries().next().value!;
+      this.enrichQueue.delete(key);
+      run();
+    }, ENRICH_MIN_GAP_MS);
+  }
+
   private async fetchRoute(cs: string, priority = false): Promise<void> {
     const key = "r:" + cs;
     if (this.inflight.has(key)) return;
@@ -505,7 +596,11 @@ export class SkyFeed {
     // it competes with every other aircraft on screen for the handful of
     // concurrent slots, and can sit on "NO ROUTE FILED" for several polls
     // while a hundred others are enriched ahead of it.
-    if (!priority && this.inflight.size >= MAX_INFLIGHT) return;
+    if (!this.canEnrich(priority)) {
+      this.queueEnrich(key, () => void this.fetchRoute(cs, true));
+      return;
+    }
+    this.lastEnrichAt = Date.now();
     this.inflight.add(key);
     try {
       const res = await fetch(`${ADSBDB_API}/callsign/${encodeURIComponent(cs)}`, {
@@ -544,9 +639,14 @@ export class SkyFeed {
     }
   }
 
-  private async fetchType(hex: string): Promise<void> {
+  private async fetchType(hex: string, released = false): Promise<void> {
     const key = "t:" + hex;
-    if (this.inflight.has(key) || this.inflight.size >= MAX_INFLIGHT) return;
+    if (this.inflight.has(key)) return;
+    if (!this.canEnrich(released)) {
+      this.queueEnrich(key, () => void this.fetchType(hex, true));
+      return;
+    }
+    this.lastEnrichAt = Date.now();
     this.inflight.add(key);
     try {
       const res = await fetch(`${ADSBDB_API}/aircraft/${encodeURIComponent(hex)}`, {
