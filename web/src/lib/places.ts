@@ -13,7 +13,11 @@ import { AIRPORT_COORDS } from "../display/airportCoords.js";
 
 const NOMINATIM = "https://nominatim.openstreetmap.org/search";
 const RECENTS_KEY = "vector.recentPlaces";
-/** Key used before the project was renamed from Skylight to Vector. */
+/**
+ * The key this used before the rename. Read once so anyone who used the app
+ * under its old name keeps their saved places; the value is rewritten under
+ * the current key and the old one removed on the next save.
+ */
 const LEGACY_RECENTS_KEY = "skylight.recentPlaces";
 const MAX_RECENTS = 8;
 

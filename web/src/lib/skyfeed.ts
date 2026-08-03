@@ -19,14 +19,20 @@ const ADSBDB_API = "https://api.adsbdb.com/v0";
 
 const CONFIG_KEY = "vector.config";
 /*
- * Versioned because entries outlive a deploy: the cache holds enrichment for
- * 12 hours, so changing how a value is formatted leaves stale ones on screen
- * until they expire. Bumping the suffix retires the old store outright.
+ * Versioned because entries outlive a deploy. The cache holds enrichment for
+ * ROUTE_TTL_MS, so changing how a value is formatted would leave stale ones on
+ * screen until they expired; bumping the suffix retires the old store outright.
+ *
+ * Do that sparingly. It forces every visitor to refetch at once, and both
+ * upstreams are free services.
  */
 const ROUTE_CACHE_KEY = "vector.routes.v2";
 /** Superseded stores, cleared on load so they don't sit in localStorage. */
 const STALE_CACHE_KEYS = ["vector.routes", "skylight.routes"];
-/** Keys used before the project was renamed from Skylight to Vector. */
+/**
+ * Config saved under the app's former name. Migrated once so anyone who used
+ * it then keeps their location and radius rather than being reset.
+ */
 const LEGACY_KEYS: Record<string, string> = {
   "skylight.config": CONFIG_KEY,
 };

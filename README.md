@@ -126,11 +126,11 @@ are drawn for this project rather than taken from a set. Every path is plain
 geometry specified by coordinate. They live in
 [`web/src/display/Icon.tsx`](web/src/display/Icon.tsx).
 
-Vector began as a fork of
-[cpaczek/skylight](https://github.com/cpaczek/skylight) and was rebuilt as a
-browser-only tracker. The original MIT licence and copyright are retained in
-[LICENSE](LICENSE).
+Vector was rebuilt from `cpaczek/skylight`, an RTL-SDR ceiling projector. The
+server, tracker, Pi provisioning and projector renderer are gone; the data
+layer, map, HUD, search and branding are new. Some of the original code
+remains, and [NOTICE.md](NOTICE.md) records file by file exactly which.
 
 ## Licence
 
-MIT — see [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md).
