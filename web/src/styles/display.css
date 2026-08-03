@@ -1058,6 +1058,28 @@ button {
   white-space: nowrap;
 }
 
+/* A matched live flight, shown above the place suggestions. Tinted so it
+   reads as a different kind of result rather than another place. */
+.loc-flight {
+  gap: 9px;
+  background: rgba(255, 170, 61, 0.07);
+  box-shadow: inset 0 -0.5px 0 var(--hairline);
+}
+
+.loc-flight:hover {
+  background: rgba(255, 170, 61, 0.16);
+}
+
+.loc-flight .loc-item-label {
+  color: var(--amber-bright);
+  font-weight: 600;
+}
+
+.loc-flight-icon {
+  color: var(--amber);
+  flex: none;
+}
+
 .loc-search {
   display: block;
   width: 100%;
@@ -1281,43 +1303,43 @@ button {
     margin-right: -0.16em;
   }
 
-  /* The credit stays: OpenStreetMap and CARTO have to be credited on a phone
-     too. It sits above the collapsed sheet, bottom-aligned with the zoom
-     controls beside it. */
-  .hud-credit {
-    left: 10px;
-    /* Stop clear of the zoom controls, which are 41px wide at a 10px inset.
-       Width follows the inset so the text wraps rather than running off. */
-    right: 68px;
-    bottom: 78px;
-    max-width: none;
-    width: auto;
-    justify-content: flex-start;
-    padding: 6px 11px;
-    gap: 3px 8px;
-    /* A pill only reads right on one line; once it wraps, round the corners
-       instead. */
-    border-radius: 13px;
+  /* The credit at the end of the sheet's scroll on phones. Separated by a
+     hairline so it reads as a footer rather than another data row. */
+  .sheet-credit {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 5px 10px;
+    margin: 4px 16px 0;
+    padding: 11px 0 4px;
+    border-top: 0.5px solid var(--hairline);
     font-size: 10px;
-    transition: opacity 0.2s var(--ease), visibility 0.2s var(--ease);
+    line-height: 1;
+    color: var(--text-3);
   }
 
-  /* An expanded sheet leaves too little map for a floating credit — it reads
-     as a stray tooltip. Fade it out and bring it back on collapse, which is
-     what map apps do with their attribution. */
-  .hud.sheet-open .hud-credit {
-    opacity: 0;
-    visibility: hidden;
-  }
-
-  .hud-credit-mine {
+  .sheet-credit .hud-credit-mine {
+    display: inline-flex;
+    align-items: center;
     gap: 8px;
   }
 
-  .hud-credit-attrib {
-    padding-left: 0;
-    box-shadow: none;
-    font-size: 9.5px;
+  .sheet-credit .hud-credit-part {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+  }
+
+  .sheet-credit .hud-credit-attrib {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .sheet-credit a {
+    color: inherit;
+    text-decoration: none;
   }
 
   .narrow-only {
@@ -1422,5 +1444,58 @@ button {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
+  }
+}
+
+/* ---------------- cursor ---------------- */
+
+/*
+ * A HUD reticle over the map, in place of the OS arrow.
+ *
+ * Inline SVG data-URIs: no extra network request, and the whole thing is
+ * under a kilobyte before gzip. There's no JavaScript involved - the browser
+ * composites the cursor itself, so it costs nothing per frame.
+ *
+ * Every stroke carries a dark halo underneath. The map runs from near-black
+ * ocean to pale coastline, and a plain amber cursor disappears over the light
+ * areas. The trailing "12 12" is the hotspot: the reticle's centre, not its
+ * top-left corner, is the point being clicked.
+ *
+ * Fine-pointer only. Touch devices have no cursor, and a custom one on a
+ * hybrid laptop with a touchscreen would apply for no reason.
+ */
+@media (pointer: fine) {
+  .display-root {
+    cursor:
+      url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='24'%20height='24'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M12%202.5V8M12%2016v5.5M2.5%2012H8M16%2012h5.5'%20fill='none'%20stroke='%23000'%20stroke-opacity='0.55'%20stroke-width='3.4'%20stroke-linecap='round'/%3E%3Cpath%20d='M12%202.5V8M12%2016v5.5M2.5%2012H8M16%2012h5.5'%20fill='none'%20stroke='%23ffaa3d'%20stroke-width='1.5'%20stroke-linecap='round'/%3E%3Ccircle%20cx='12'%20cy='12'%20r='2.4'%20fill='none'%20stroke='%23000'%20stroke-opacity='0.55'%20stroke-width='3'/%3E%3Ccircle%20cx='12'%20cy='12'%20r='2.4'%20fill='none'%20stroke='%23ffaa3d'%20stroke-width='1.3'/%3E%3Ccircle%20cx='12'%20cy='12'%20r='0.9'%20fill='%23ffd9a0'/%3E%3C/svg%3E")
+        12 12,
+      crosshair;
+  }
+
+  /* Anything clickable gets a brighter, tighter reticle, so the cursor itself
+     signals the target rather than relying on hover styling alone. */
+  .hud button,
+  .hud a,
+  .loc-item,
+  .loc-search,
+  .loc-gps,
+  .ct-row,
+  .sheet-peek,
+  .maplibregl-canvas {
+    cursor:
+      url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='24'%20height='24'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M12%203.5V9M12%2015v5.5M3.5%2012H9M15%2012h5.5'%20fill='none'%20stroke='%23000'%20stroke-opacity='0.55'%20stroke-width='3.4'%20stroke-linecap='round'/%3E%3Cpath%20d='M12%203.5V9M12%2015v5.5M3.5%2012H9M15%2012h5.5'%20fill='none'%20stroke='%23ffd9a0'%20stroke-width='1.6'%20stroke-linecap='round'/%3E%3Ccircle%20cx='12'%20cy='12'%20r='3.4'%20fill='none'%20stroke='%23000'%20stroke-opacity='0.55'%20stroke-width='3'/%3E%3Ccircle%20cx='12'%20cy='12'%20r='3.4'%20fill='none'%20stroke='%23ffd9a0'%20stroke-width='1.4'/%3E%3Ccircle%20cx='12'%20cy='12'%20r='1.1'%20fill='%23fff'/%3E%3C/svg%3E")
+        12 12,
+      pointer;
+  }
+
+  /* Dragging the map is the one place a reticle reads wrong - the OS grab
+     hand says "you're moving this", which is exactly right. */
+  .maplibregl-canvas-container.maplibregl-interactive:active,
+  .maplibregl-canvas-container.mapboxgl-track-pointer {
+    cursor: grabbing;
+  }
+
+  .loc-field input {
+    cursor: text;
   }
 }

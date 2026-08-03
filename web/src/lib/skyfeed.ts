@@ -227,6 +227,8 @@ export class SkyFeed {
   private polling = false;
   /** hex -> recent [lon, lat] fixes, oldest first. */
   private trails = new Map<string, [number, number][]>();
+  /** Aircraft whose enrichment jumps the request queue, if any. */
+  private priorityHex: string | null = null;
 
   state: StreamState = {
     connected: false,
@@ -258,6 +260,14 @@ export class SkyFeed {
   }
 
   // --- config (persisted locally) ---
+
+  /**
+   * Mark one aircraft as the user's focus, so its route lookup bypasses the
+   * concurrency cap. Set after a flight search; harmless to clear.
+   */
+  setPriority(hex: string | null): void {
+    this.priorityHex = hex;
+  }
 
   patchConfig(patch: Partial<Config>): void {
     const base = this.state.config ?? DEFAULT_CONFIG;
@@ -370,6 +380,7 @@ export class SkyFeed {
 
   private enrich(ac: Aircraft, now: number): void {
     const cs = ac.flight?.trim().toUpperCase();
+    const priority = ac.hex === this.priorityHex;
 
     if (cs && CALLSIGN_RE.test(cs)) {
       const hit = this.cache.routes[cs];
@@ -387,7 +398,7 @@ export class SkyFeed {
           ac.destLon = r.destLon ?? ac.destLon;
         }
       } else {
-        void this.fetchRoute(cs);
+        void this.fetchRoute(cs, priority);
       }
     }
 
@@ -434,9 +445,14 @@ export class SkyFeed {
     });
   }
 
-  private async fetchRoute(cs: string): Promise<void> {
+  private async fetchRoute(cs: string, priority = false): Promise<void> {
     const key = "r:" + cs;
-    if (this.inflight.has(key) || this.inflight.size >= MAX_INFLIGHT) return;
+    if (this.inflight.has(key)) return;
+    // A flight the user explicitly searched for jumps the queue. Without this
+    // it competes with every other aircraft on screen for the handful of
+    // concurrent slots, and can sit on "NO ROUTE FILED" for several polls
+    // while a hundred others are enriched ahead of it.
+    if (!priority && this.inflight.size >= MAX_INFLIGHT) return;
     this.inflight.add(key);
     try {
       const res = await fetch(`${ADSBDB_API}/callsign/${encodeURIComponent(cs)}`, {

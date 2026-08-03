@@ -8,6 +8,7 @@ import { GeoMapLayer } from "./GeoMapLayer.js";
 import { AircraftCanvas } from "./AircraftCanvas.js";
 import { CinematicOverlays } from "./CinematicOverlays.js";
 import { LocationBox } from "./LocationBox.js";
+import type { FlightHit } from "../lib/flights.js";
 
 /**
  * Radius ladder in miles, stopping at the 200 km cap. The values are chosen
@@ -31,6 +32,8 @@ export function Display() {
 
   const [selectedHex, setSelectedHex] = useState<string | null>(null);
   const [centerVersion, setCenterVersion] = useState(0);
+  /** Deadline until which a freshly searched selection survives an empty feed. */
+  const selectionGraceRef = useRef(0);
   /** Shared render state, handed over once the map is ready. */
   const [render, setRender] = useState<{
     map: maplibregl.Map;
@@ -62,6 +65,28 @@ export function Display() {
     [conn],
   );
 
+  /**
+   * Fly to a flight found anywhere on Earth. The feed only returns aircraft
+   * inside the radius, so the map has to move to it first; selecting by hex
+   * then takes effect as soon as the next poll brings the aircraft in.
+   */
+  const handlePickFlight = useCallback(
+    (hit: FlightHit) => {
+      const name = hit.callsign ?? hit.registration ?? hit.hex.toUpperCase();
+      // Two polls' worth of slack for the aircraft to appear in the feed.
+      selectionGraceRef.current = Date.now() + 8000;
+      conn.setPriority(hit.hex);
+      setCenterVersion((v) => v + 1);
+      setSelectedHex(hit.hex);
+      conn.patchConfig({
+        centerLat: hit.lat,
+        centerLon: hit.lon,
+        locationName: `${name} in flight`,
+      });
+    },
+    [conn],
+  );
+
   const stepRadius = useCallback(
     (dir: -1 | 1) => {
       const current = configRef.current.radiusMiles;
@@ -77,11 +102,19 @@ export function Display() {
   const handleZoomIn = useCallback(() => stepRadius(-1), [stepRadius]);
   const handleZoomOut = useCallback(() => stepRadius(1), [stepRadius]);
 
-  // Drop a stale selection once the aircraft leaves the feed.
+  // Drop a stale selection once the aircraft leaves the feed. A selection made
+  // by flight search is exempt until the feed has had time to catch up: the
+  // map has only just moved, so the aircraft won't appear until the next poll
+  // and clearing it here would undo the search immediately.
   useEffect(() => {
     if (!selectedHex) return;
     if (state.aircraft.length === 0) return;
-    if (!state.aircraft.some((a) => a.hex === selectedHex)) setSelectedHex(null);
+    if (state.aircraft.some((a) => a.hex === selectedHex)) {
+      selectionGraceRef.current = 0;
+      return;
+    }
+    if (selectionGraceRef.current > Date.now()) return;
+    setSelectedHex(null);
   }, [state.aircraft, selectedHex]);
 
   useEffect(() => {
@@ -135,6 +168,7 @@ export function Display() {
         centerLat={cfg.centerLat}
         centerLon={cfg.centerLon}
         onPick={handlePickLocation}
+        onPickFlight={handlePickFlight}
       />
 
       <CinematicOverlays

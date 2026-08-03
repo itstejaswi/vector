@@ -170,6 +170,34 @@ export function CinematicOverlays({
     </>
   );
 
+  // Credit and map attribution, rendered in two places: the desktop corner
+  // bar, and the end of the mobile sheet's scroll.
+  const credit = (
+    <>
+      <span className="hud-credit-mine">
+        <span className="hud-credit-part">Vibe coded by Tejaswi</span>
+        <span className="hud-credit-dot" aria-hidden="true" />
+        <span className="hud-credit-part">
+          built with
+          <Icon name="heart" size={11} className="hud-credit-heart" />
+          and Microsoft Scout
+        </span>
+      </span>
+      <span className="hud-credit-attrib">
+        <a
+          href="https://www.openstreetmap.org/copyright"
+          target="_blank"
+          rel="noreferrer noopener"
+        >
+          © OpenStreetMap
+        </a>
+        <a href="https://carto.com/attributions" target="_blank" rel="noreferrer noopener">
+          © CARTO
+        </a>
+      </span>
+    </>
+  );
+
   return (
     <div className={"hud" + (expanded ? " sheet-open" : "")}>
       <div className="hud-vignette" />
@@ -331,38 +359,21 @@ export function CinematicOverlays({
                 ))}
               {tab === "traffic" && trafficPanel}
               {tab === "stats" && statsPanel}
+              {/* The credit rides at the end of the sheet's scroll on phones.
+                  Floated over the map it had nowhere to sit: wedged between
+                  the zoom controls and the sheet, it read as a stray tooltip
+                  in the only strip of map still visible. */}
+              <div className="sheet-credit">{credit}</div>
             </div>
           </>
         )}
       </section>
 
       {/* ---------- credit + map attribution ---------- */}
-      {/* Bottom-left, the way map apps corner their provider credit. The
-          OpenStreetMap and CARTO notices belong here too: their licences
-          require attribution, and MapLibre's own control is switched off. */}
-      <footer className="hud-credit">
-        <span className="hud-credit-mine">
-          <span className="hud-credit-part">Vibe coded by Tejaswi</span>
-          <span className="hud-credit-dot" aria-hidden="true" />
-          <span className="hud-credit-part">
-            built with
-            <Icon name="heart" size={11} className="hud-credit-heart" />
-            and Microsoft Scout
-          </span>
-        </span>
-        <span className="hud-credit-attrib">
-          <a
-            href="https://www.openstreetmap.org/copyright"
-            target="_blank"
-            rel="noreferrer noopener"
-          >
-            © OpenStreetMap
-          </a>
-          <a href="https://carto.com/attributions" target="_blank" rel="noreferrer noopener">
-            © CARTO
-          </a>
-        </span>
-      </footer>
+      {/* Bottom-left on desktop, the way map apps corner their provider
+          credit. The OpenStreetMap and CARTO notices belong here too: their
+          licences require attribution, and MapLibre's own control is off. */}
+      <footer className="hud-credit wide-only">{credit}</footer>
     </div>
   );
 }

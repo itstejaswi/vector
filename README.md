@@ -14,6 +14,10 @@ ground tracks, and the great-circle route of whichever flight you select.
 - **Go anywhere.** Type `12.9613, 74.89`, `LHR`, or `Mangaluru` — coordinates
   and IATA codes resolve instantly from a local table, anything else through
   OpenStreetMap. Or press ⌖ to use your device's location.
+- **Find a flight.** Type a callsign (`BAW172`), registration (`G-VIIN`) or
+  ICAO hex and the map flies to that aircraft wherever it is on Earth, then
+  selects it. Airport codes and place names are never mistaken for flights: a
+  callsign always carries a digit, and `DEL` never does.
 - **Live traffic.** Aircraft positions refresh every 3 seconds from
   airplanes.live, coloured by altitude band, with a fading ground track and
   climb/descent markers.
@@ -60,6 +64,8 @@ or `npx serve web/dist`.
 ```
 browser
   ├── airplanes.live      aircraft positions      (CORS: *)
+  │     ├── /point/…      everything in radius, polled every 3s
+  │     └── /callsign|reg|hex/…   global flight search
   ├── adsbdb.com          route + type lookup     (CORS: *)
   ├── nominatim.osm.org   place-name geocoding    (CORS: *)
   └── CARTO basemap       dark raster tiles       (no key)
@@ -69,12 +75,18 @@ Every upstream sends `access-control-allow-origin: *`, which is what makes a
 serverless build possible. Enrichment results — including negative lookups —
 are cached in `localStorage` for 12 hours so the free APIs aren't hammered.
 
+Flight search takes a different path from the map feed, which only ever returns
+aircraft inside the current radius. A query shaped like a callsign, registration
+or hex goes to the matching lookup endpoint; on a hit the map re-centres on that
+aircraft and selects it, and its route lookup is allowed to jump the request
+queue so a searched flight doesn't wait behind a hundred others.
+
 ### Layout
 
 | Path              | What's in it                                          |
 | ----------------- | ----------------------------------------------------- |
-| `web/src/lib`     | Data feed, config persistence, place resolution        |
-| `web/src/display` | Map layer, HUD overlays, location box                  |
+| `web/src/lib`     | Data feed, flight search, config, place resolution     |
+| `web/src/display` | Map layer, HUD overlays, search box                    |
 | `shared/src`      | Config schema, guard rails, geo and formatting helpers |
 
 ### Guard rails

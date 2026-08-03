@@ -9,6 +9,7 @@ import {
   resolvePlace,
   type RecentPlace,
 } from "../lib/places.js";
+import { looksLikeFlight, searchFlight, type FlightHit } from "../lib/flights.js";
 import { AIRPORT_COORDS, AIRPORT_NAMES, POPULAR_AIRPORTS } from "./airportCoords.js";
 import { Icon } from "./Icon.js";
 
@@ -17,6 +18,8 @@ interface Props {
   centerLat: number;
   centerLon: number;
   onPick: (lat: number, lon: number, name: string) => void;
+  /** Fly to a flight found anywhere on Earth and select it. */
+  onPickFlight: (hit: FlightHit) => void;
 }
 
 interface Suggestion {
@@ -82,19 +85,54 @@ function searchAirports(query: string): Suggestion[] {
 }
 
 /**
- * Smart location box. Accepts decimal coordinates, an airport code, or any
- * place name — coordinates and codes resolve instantly from local tables,
- * anything else goes to Nominatim on submit.
+ * Smart search box. Accepts decimal coordinates, an airport code, a place
+ * name, or a flight — coordinates and codes resolve instantly from local
+ * tables, place names go to Nominatim, and anything shaped like a callsign or
+ * registration is looked up against the live traffic feed.
  */
-export function LocationBox({ locationName, centerLat, centerLon, onPick }: Props) {
+export function LocationBox({
+  locationName,
+  centerLat,
+  centerLon,
+  onPick,
+  onPickFlight,
+}: Props) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [recents, setRecents] = useState<RecentPlace[]>([]);
+  const [flight, setFlight] = useState<FlightHit | null>(null);
+  const [flightBusy, setFlightBusy] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => setRecents(loadRecents()), []);
+
+  // Look up flight-shaped queries as they're typed. Debounced, and each new
+  // keystroke aborts the previous request so results can't arrive out of order.
+  const trimmed = query.trim();
+  useEffect(() => {
+    if (!looksLikeFlight(trimmed)) {
+      setFlight(null);
+      setFlightBusy(false);
+      return;
+    }
+    const ctrl = new AbortController();
+    setFlightBusy(true);
+    const t = setTimeout(() => {
+      void searchFlight(trimmed, ctrl.signal)
+        .then((hit) => {
+          if (!ctrl.signal.aborted) setFlight(hit);
+        })
+        .finally(() => {
+          if (!ctrl.signal.aborted) setFlightBusy(false);
+        });
+    }, 280);
+    return () => {
+      clearTimeout(t);
+      ctrl.abort();
+    };
+  }, [trimmed]);
 
   // Close on outside tap. pointerdown covers mouse and touch alike.
   useEffect(() => {
@@ -174,9 +212,26 @@ export function LocationBox({ locationName, centerLat, centerLon, onPick }: Prop
     [onPick],
   );
 
+  const commitFlight = useCallback(
+    (hit: FlightHit) => {
+      onPickFlight(hit);
+      setQuery("");
+      setOpen(false);
+      setError(null);
+      setFlight(null);
+    },
+    [onPickFlight],
+  );
+
   const submit = useCallback(async () => {
     const q = query.trim();
     if (!q) return;
+    // A matched flight wins: if the query looked like a callsign and we found
+    // it, that's unambiguously what was meant.
+    if (flight) {
+      commitFlight(flight);
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -187,7 +242,7 @@ export function LocationBox({ locationName, centerLat, centerLon, onPick }: Prop
     } finally {
       setBusy(false);
     }
-  }, [query, commit]);
+  }, [query, commit, flight, commitFlight]);
 
   const useMyLocation = useCallback(async () => {
     setBusy(true);
@@ -209,7 +264,7 @@ export function LocationBox({ locationName, centerLat, centerLon, onPick }: Prop
         <input
           value={query}
           spellCheck={false}
-          placeholder={locationName || "Search location"}
+          placeholder={locationName || "Search place or flight"}
           onFocus={() => setOpen(true)}
           // Focus alone isn't enough: after picking a place the input keeps
           // focus, so a second tap fires no focus event and the list would
@@ -251,6 +306,45 @@ export function LocationBox({ locationName, centerLat, centerLon, onPick }: Prop
         <div className="loc-panel">
           {error && <div className="loc-error">{error}</div>}
 
+          {/* Flight result leads: if the query matched a live aircraft, that's
+              almost certainly what was wanted. */}
+          {flight && (
+            <>
+              <div className="loc-head">Live flight</div>
+              <button
+                type="button"
+                className="loc-item loc-flight"
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  commitFlight(flight);
+                }}
+              >
+                <Icon name="plane" size={13} className="loc-flight-icon" />
+                <span className="loc-item-main">
+                  <span className="loc-item-label">
+                    {flight.callsign ?? flight.registration ?? flight.hex.toUpperCase()}
+                  </span>
+                  <span className="loc-item-sub">
+                    {[flight.registration, flight.typeName ?? flight.typeCode]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </span>
+                </span>
+                <span className="loc-item-detail">
+                  {flight.onGround
+                    ? "On ground"
+                    : flight.altitude != null
+                      ? `${flight.altitude.toLocaleString()} ft`
+                      : "Airborne"}
+                </span>
+              </button>
+            </>
+          )}
+
+          {flightBusy && !flight && (
+            <div className="loc-head">Searching live traffic…</div>
+          )}
+
           {suggestions.length > 0 && (
             <>
               <div className="loc-head">{headline}</div>
@@ -290,7 +384,7 @@ export function LocationBox({ locationName, centerLat, centerLon, onPick }: Prop
           )}
 
           <div className="loc-hint">
-            City, airport code, or coordinates
+            City, airport, flight no. or coordinates
             {GEOLOCATION_SUPPORTED && (
               <>
                 {" · "}
