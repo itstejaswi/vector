@@ -1,5 +1,56 @@
 import { describe, expect, it } from "vitest";
-import { cleanCallsign, cleanTypeName } from "../src/lib/skyfeed.js";
+import { cleanCallsign, cleanTypeName, routeFits } from "../src/lib/skyfeed.js";
+
+const JFK = { lat: 40.6398, lon: -73.7789 };
+const IAH = { lat: 29.9844, lon: -95.3414 };
+const DOH = { lat: 25.2731, lon: 51.608 };
+const LHR = { lat: 51.4706, lon: -0.4619 };
+
+const route = (o: { lat: number; lon: number }, d: { lat: number; lon: number }) => ({
+  originLat: o.lat,
+  originLon: o.lon,
+  destLat: d.lat,
+  destLon: d.lon,
+});
+
+describe("routeFits", () => {
+  it("rejects a route the aircraft cannot possibly be flying", () => {
+    // The real case: a Qatar 787 over the Arabian Sea, which adsbdb matched to
+    // QTR5B and returned as JFK to Houston. The nearest endpoint was 13,238 km
+    // from a route only 2,278 km long.
+    expect(routeFits(12.96, 74.89, route(JFK, IAH))).toBe(false);
+  });
+
+  it("accepts an aircraft partway along its route", () => {
+    // Somewhere over the Atlantic on a Doha to London run.
+    expect(routeFits(38, 25, route(DOH, LHR))).toBe(true);
+  });
+
+  it("accepts an aircraft sitting at either endpoint", () => {
+    expect(routeFits(JFK.lat, JFK.lon, route(JFK, IAH))).toBe(true);
+    expect(routeFits(IAH.lat, IAH.lon, route(JFK, IAH))).toBe(true);
+  });
+
+  it("allows a generous diversion rather than discarding it", () => {
+    // ~700 km off the JFK-IAH line: unusual, but a real aircraft could be
+    // there, so the route stands.
+    expect(routeFits(35, -88, route(JFK, IAH))).toBe(true);
+  });
+
+  it("passes anything it cannot verify", () => {
+    // No position, or no route endpoints: unverifiable is not wrong.
+    expect(routeFits(undefined, undefined, route(JFK, IAH))).toBe(true);
+    expect(routeFits(12.96, 74.89, {})).toBe(true);
+    expect(routeFits(12.96, 74.89, { originLat: 40, originLon: -73 })).toBe(true);
+  });
+
+  it("scales its allowance with the length of the route", () => {
+    // A long-haul route tolerates a far larger offset than a short hop, since
+    // the aircraft has more places it could legitimately be.
+    expect(routeFits(20, 40, route(DOH, LHR))).toBe(true);
+    expect(routeFits(20, 40, route(JFK, IAH))).toBe(false);
+  });
+});
 
 describe("cleanTypeName", () => {
   it("hyphenates a model and its variant", () => {

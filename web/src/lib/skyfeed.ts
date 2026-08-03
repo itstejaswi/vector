@@ -202,6 +202,45 @@ export function cleanTypeName(raw: string | undefined): string | undefined {
   return trimmed;
 }
 
+/**
+ * Whether a route is plausible for where the aircraft actually is.
+ *
+ * Short callsigns collide. adsbdb matched a Qatar Airways 787 over the Arabian
+ * Sea to "QTR5B" and returned JFK to Houston: a 2,278 km route whose nearest
+ * end was 13,238 km away. The arc was drawn faithfully, and looked absurd.
+ *
+ * An aircraft in flight is somewhere between its endpoints, so it can never be
+ * much further from the nearer one than the route is long. The allowance is
+ * deliberately generous - a diversion or a long hold must not be discarded -
+ * so this only catches routes belonging to a different flight entirely.
+ *
+ * Anything missing a coordinate passes: an unverifiable route is not a wrong
+ * one, and the map simply won't draw an arc without endpoints.
+ *
+ * Exported for tests.
+ */
+export function routeFits(
+  lat: number | undefined,
+  lon: number | undefined,
+  r: {
+    originLat?: number;
+    originLon?: number;
+    destLat?: number;
+    destLon?: number;
+  },
+): boolean {
+  if (lat == null || lon == null) return true;
+  if (r.originLat == null || r.originLon == null) return true;
+  if (r.destLat == null || r.destLon == null) return true;
+
+  const legKm = greatCircleKm(r.originLat, r.originLon, r.destLat, r.destLon);
+  const toOrigin = greatCircleKm(lat, lon, r.originLat, r.originLon);
+  const toDest = greatCircleKm(lat, lon, r.destLat, r.destLon);
+
+  // Half the leg plus 500 km covers any sane track, hold or diversion.
+  return Math.min(toOrigin, toDest) <= legKm * 0.5 + 500;
+}
+
 function normalize(raw: RawAircraft, ts: number): Aircraft | null {
   if (!raw.hex) return null;
   const onGround = raw.alt_baro === "ground";
@@ -480,15 +519,25 @@ export class SkyFeed {
     return !!e && now - e.at < ROUTE_TTL_MS;
   }
 
+  /**
+   * Whether a route is plausible for where the aircraft actually is.
+   *
+   * Delegates to the exported routeFits so the rule can be tested directly.
+   */
+  private routeFits(ac: Aircraft, r: RouteInfo): boolean {
+    return routeFits(ac.lat, ac.lon, r);
+  }
+
   private enrich(ac: Aircraft, now: number): void {
     const cs = ac.flight?.trim().toUpperCase();
     const priority = ac.hex === this.priorityHex;
+    let routeRejected = false;
 
     if (cs && CALLSIGN_RE.test(cs)) {
       const hit = this.cache.routes[cs];
       if (this.fresh(hit, now)) {
         const r = hit!.data;
-        if (r) {
+        if (r && this.routeFits(ac, r)) {
           ac.airline = r.airline ?? ac.airline;
           ac.origin = r.origin ?? ac.origin;
           ac.destination = r.destination ?? ac.destination;
@@ -498,6 +547,11 @@ export class SkyFeed {
           ac.originLon = r.originLon ?? ac.originLon;
           ac.destLat = r.destLat ?? ac.destLat;
           ac.destLon = r.destLon ?? ac.destLon;
+        } else if (r) {
+          routeRejected = true;
+          // The airline is still right even when the city pair is not: the
+          // callsign prefix identifies the operator regardless.
+          ac.airline = r.airline ?? ac.airline;
         }
       } else {
         void this.fetchRoute(cs, priority);
@@ -516,19 +570,23 @@ export class SkyFeed {
     }
 
     // Sticky merge: once resolved, never fall back to blank on a later poll.
+    // The route half is skipped when routeFits rejected it, or the value the
+    // check just discarded would come straight back from the previous poll.
     const prev = this.sticky.get(ac.hex);
     if (prev) {
       ac.typeName = ac.typeName ?? prev.typeName;
       ac.airline = ac.airline ?? prev.airline;
-      ac.origin = ac.origin ?? prev.origin;
-      ac.destination = ac.destination ?? prev.destination;
       ac.registration = ac.registration ?? prev.registration;
-      ac.originName = ac.originName ?? prev.originName;
-      ac.destName = ac.destName ?? prev.destName;
-      ac.originLat = ac.originLat ?? prev.originLat;
-      ac.originLon = ac.originLon ?? prev.originLon;
-      ac.destLat = ac.destLat ?? prev.destLat;
-      ac.destLon = ac.destLon ?? prev.destLon;
+      if (!routeRejected) {
+        ac.origin = ac.origin ?? prev.origin;
+        ac.destination = ac.destination ?? prev.destination;
+        ac.originName = ac.originName ?? prev.originName;
+        ac.destName = ac.destName ?? prev.destName;
+        ac.originLat = ac.originLat ?? prev.originLat;
+        ac.originLon = ac.originLon ?? prev.originLon;
+        ac.destLat = ac.destLat ?? prev.destLat;
+        ac.destLon = ac.destLon ?? prev.destLon;
+      }
     }
 
     this.sticky.set(ac.hex, {
