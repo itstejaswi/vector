@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Vector">
+  <title>Vector</title>
+
+  <!--
+    An original mark, drawn from scratch: an airliner banked 45 degrees and
+    climbing away on its contrail. Every path here is plain geometry specified
+    by coordinate - nothing is traced from, sampled from, or derived from any
+    existing logo.
+
+    The trail fades out at its tail the way a real contrail dissipates, which
+    reads as motion. Weights are deliberately heavy so the mark survives a
+    16px favicon, where finer strokes vanish entirely.
+  -->
+
+  <defs>
+    <linearGradient id="vg-body" x1="8" y1="24" x2="24" y2="8" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ff9e22"/>
+      <stop offset="1" stop-color="#ffd9a0"/>
+    </linearGradient>
+    <linearGradient id="vg-trail" x1="3" y1="28" x2="18" y2="15" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffaa3d" stop-opacity="0"/>
+      <stop offset="1" stop-color="#ffaa3d" stop-opacity="0.95"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="32" height="32" rx="7.2" fill="#06070a"/>
+
+  <path d="M2.8 28.6C10.2 26.2 14.8 22.2 17.8 16.8" fill="none"
+        stroke="url(#vg-trail)" stroke-width="3.2" stroke-linecap="round"/>
+
+  <!-- Fuselage, swept wings and tailplane, drawn nose-up then banked. -->
+  <path transform="translate(20.4 11.8) rotate(45) scale(1.18)"
+        d="M0 -7.6c.85 0 1.42 1.05 1.42 2.55v1.7l5.5 3.4v1.9l-5.5-1.75v3.3l2.1 1.55v1.5L0 6.6l-3.52 1.05v-1.5l2.1-1.55v-3.3l-5.5 1.75v-1.9l5.5-3.4v-1.7C-1.42-6.55-.85-7.6 0-7.6Z"
+        fill="url(#vg-body)"/>
+</svg>

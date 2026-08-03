@@ -12,6 +12,8 @@
  * up with their labels and scale with one number.
  */
 
+import { useId } from "react";
+
 export type IconName =
   | "plane"
   | "planeRight"
@@ -157,6 +159,60 @@ export function Icon({ name, size = 14, className, rotate }: Props) {
       style={rotate ? { transform: `rotate(${rotate}deg)` } : undefined}
     >
       {PATHS[name]}
+    </svg>
+  );
+}
+
+/**
+ * The Vector brand mark: an airliner banked 45 degrees and climbing away on
+ * its contrail. Drawn from scratch — every path is plain geometry specified
+ * by coordinate, nothing traced from or derived from any existing logo.
+ *
+ * Kept out of the icon table because it's two-tone (the trail fades) and
+ * because it must match public/favicon.svg, so the browser tab and the app
+ * show the same mark. Geometry is the favicon's, halved onto this 16x16 grid.
+ */
+export function BrandMark({ size = 20, className }: { size?: number; className?: string }) {
+  // Gradient ids are document-global, so two instances would collide.
+  const id = useId();
+  return (
+    <svg
+      className={className ? `icon ${className}` : "icon"}
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      focusable="false"
+      aria-hidden="true"
+    >
+      <defs>
+        {/* The contrail dissipates towards its tail, which reads as motion.
+            Both stops are currentColor, so the mark takes the colour of
+            whatever it sits beside. */}
+        <linearGradient
+          id={id}
+          x1="1.5"
+          y1="14"
+          x2="9"
+          y2="7.5"
+          gradientUnits="userSpaceOnUse"
+        >
+          <stop offset="0" stopColor="currentColor" stopOpacity="0" />
+          <stop offset="1" stopColor="currentColor" stopOpacity="0.95" />
+        </linearGradient>
+      </defs>
+      <path
+        d="M1.4 14.3C5.1 13.1 7.4 11.1 8.9 8.4"
+        fill="none"
+        stroke={`url(#${id})`}
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+      {/* Fuselage, swept wings and tailplane, drawn nose-up then banked. */}
+      <path
+        transform="translate(10.2 5.9) rotate(45) scale(0.59)"
+        d="M0 -7.6c.85 0 1.42 1.05 1.42 2.55v1.7l5.5 3.4v1.9l-5.5-1.75v3.3l2.1 1.55v1.5L0 6.6l-3.52 1.05v-1.5l2.1-1.55v-3.3l-5.5 1.75v-1.9l5.5-3.4v-1.7C-1.42-6.55-.85-7.6 0-7.6Z"
+        fill="currentColor"
+      />
     </svg>
   );
 }

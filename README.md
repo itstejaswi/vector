@@ -91,6 +91,23 @@ data from [adsbdb](https://api.adsbdb.com). Geocoding by
 Basemap tiles © [CARTO](https://carto.com), © OpenStreetMap contributors.
 Airport coordinates from [OurAirports](https://ourairports.com) (CC0).
 
+The Vector logo — an airliner banked and climbing away on its contrail — is
+original work drawn for this project. Every path is plain geometry specified by
+coordinate; nothing is traced from or derived from any existing logo.
+[`web/public/favicon.svg`](web/public/favicon.svg) is the source of truth, and
+`BrandMark` in [`web/src/display/Icon.tsx`](web/src/display/Icon.tsx) mirrors
+the same geometry so the browser tab and the app show the same mark. The PNG
+sizes beside it are committed rather than generated at build time, which keeps
+a native image dependency out of CI. To regenerate them after editing the SVG:
+
+```bash
+pnpm --dir web add -D sharp
+node -e "const s=require('./web/node_modules/sharp'),f=require('fs'),v=f.readFileSync('web/public/favicon.svg');\
+[[32,'favicon-32'],[192,'icon-192'],[512,'icon-512']].forEach(([n,o])=>s(v,{density:900}).resize(n,n).png().toFile('web/public/'+o+'.png'));\
+s(v,{density:900}).resize(180,180).flatten({background:'#06070a'}).png().toFile('web/public/apple-touch-icon.png')"
+pnpm --dir web remove sharp
+```
+
 Vector began as a fork of
 [cpaczek/skylight](https://github.com/cpaczek/skylight) and was rebuilt as a
 browser-only tracker. The original MIT licence and copyright are retained in

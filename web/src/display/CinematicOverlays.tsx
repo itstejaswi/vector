@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Aircraft } from "@shared/index.js";
 import { distSq, greatCircleKm, milesToKm } from "@shared/index.js";
-import { Icon, type IconName } from "./Icon.js";
+import { BrandMark, Icon, type IconName } from "./Icon.js";
 
 interface Props {
   locationName: string;
@@ -179,10 +179,19 @@ export function CinematicOverlays({
       <span className="hud-bk hud-bk-bl" aria-hidden="true" />
       <span className="hud-bk hud-bk-br" aria-hidden="true" />
 
+      {/* ---------- brand ---------- */}
+      {/* Top-right, opposite the telemetry strip. The mark is the same
+          geometry as the favicon, so the tab and the app agree. */}
+      <div className="hud-brand">
+        <BrandMark size={22} className="hud-brand-mark" />
+        <span className="hud-brand-text">
+          <span className="hud-brand-name">VECTOR</span>
+          <span className="hud-brand-tag">FLIGHT TRACKING</span>
+        </span>
+      </div>
+
       {/* ---------- top status strip ---------- */}
       <div className="hud-strip">
-        <span className="hud-wordmark">VECTOR</span>
-        <span className="hud-strip-sep" />
         <span className={"hud-dot " + (connected ? "ok" : "bad")} />
         <span className="hud-strip-name">{locationName || "UNKNOWN"}</span>
         <span className="hud-strip-sep" />

@@ -191,6 +191,59 @@ button {
 
 /* ---------------- top status strip ---------------- */
 
+/* ---------------- brand ---------------- */
+
+/* Top-right corner lockup. Sized in fixed px rather than em so it can't
+   inherit a different scale on one breakpoint and look wrong on the other. */
+.hud-brand {
+  position: absolute;
+  top: 20px;
+  right: 24px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 14px 7px 12px;
+  box-sizing: border-box;
+  background: var(--material);
+  border: 0.5px solid var(--stroke);
+  border-radius: 999px;
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  box-shadow: var(--shadow);
+  z-index: 14;
+  pointer-events: auto;
+}
+
+.hud-brand-mark {
+  color: var(--amber);
+  flex: none;
+}
+
+.hud-brand-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  line-height: 1;
+}
+
+.hud-brand-name {
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.19em;
+  /* Tracking adds space after the last letter too; pull it back so the word
+     sits optically centred over the tagline below. */
+  margin-right: -0.19em;
+  color: var(--text);
+}
+
+.hud-brand-tag {
+  font-size: 7.5px;
+  font-weight: 600;
+  letter-spacing: 0.13em;
+  margin-right: -0.13em;
+  color: var(--text-3);
+}
+
 .hud-strip {
   position: absolute;
   top: 20px;
@@ -200,6 +253,9 @@ button {
   align-items: center;
   gap: 12px;
   padding: 9px 18px;
+  /* Match the brand lockup opposite it so the top row reads as one band. */
+  min-height: 37px;
+  box-sizing: border-box;
   background: var(--material);
   border: 0.5px solid var(--stroke);
   border-radius: 999px;
@@ -213,13 +269,6 @@ button {
   white-space: nowrap;
   max-width: calc(100vw - 48px);
   overflow: hidden;
-}
-
-.hud-wordmark {
-  color: var(--amber);
-  font-weight: 700;
-  letter-spacing: 0.2em;
-  font-size: 10.5px;
 }
 
 .hud-strip-name {
@@ -1062,6 +1111,9 @@ button {
     width: 236px;
     left: 16px;
   }
+  .hud-brand {
+    right: 16px;
+  }
   .hud-credit {
     left: 16px;
     max-width: calc(100vw - 32px);
@@ -1206,6 +1258,29 @@ button {
     display: none !important;
   }
 
+  /* The lockup keeps its mark at full size and drops only the tagline, so the
+     brand reads at the same weight as it does on a desktop rather than
+     shrinking to a smudge. The search box below yields the width. */
+  .hud-brand {
+    top: 10px;
+    right: 10px;
+    gap: 7px;
+    /* Match the search field beside it, so the top row is one clean band. */
+    height: 44px;
+    min-height: 0;
+    padding: 0 13px 0 11px;
+  }
+
+  .hud-brand-tag {
+    display: none;
+  }
+
+  .hud-brand-name {
+    font-size: 12px;
+    letter-spacing: 0.16em;
+    margin-right: -0.16em;
+  }
+
   /* The credit stays: OpenStreetMap and CARTO have to be credited on a phone
      too. It sits above the collapsed sheet, bottom-aligned with the zoom
      controls beside it. */
@@ -1252,11 +1327,16 @@ button {
   .loc-box {
     top: 10px;
     left: 10px;
-    right: 10px;
+    /* Yield the top-right corner to the brand lockup. The value is checked
+       against the lockup's measured width, not guessed. */
+    right: 130px;
     width: auto;
-    /* The desktop clamp is calc(100vw - 48px), which leaves a dead gap on the
-       right once left/right are both 10px. Let the inset drive the width. */
     max-width: none;
+  }
+
+  /* The dropdown is free to use the full width the field doesn't. */
+  .loc-panel {
+    width: calc(100vw - 20px);
   }
 
   .loc-field {
