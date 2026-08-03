@@ -102,11 +102,34 @@ const PATHS: Record<IconName, JSX.Element> = {
       <rect x="2" y="10.9" width="12" height="1.9" rx="0.95" fill="currentColor" />
     </>
   ),
+  /*
+   * Telemetry: a radar sweep. Concentric arcs with a bearing line, which reads
+   * as air-traffic surveillance rather than the phone-signal bars a plain bar
+   * chart suggests.
+   */
   stats: (
     <>
-      <rect x="2.2" y="9" width="2.8" height="4.8" rx="0.8" fill="currentColor" />
-      <rect x="6.6" y="5.4" width="2.8" height="8.4" rx="0.8" fill="currentColor" />
-      <rect x="11" y="2.2" width="2.8" height="11.6" rx="0.8" fill="currentColor" />
+      <path
+        d="M8 13.6a5.6 5.6 0 1 1 5.6-5.6"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+      <path
+        d="M8 10.8a2.8 2.8 0 0 1 2.8-2.8"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+      <path
+        d="M8 8l4.6-4.6"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+      <circle cx="8" cy="8" r="1.15" fill="currentColor" />
     </>
   ),
   locate: (
