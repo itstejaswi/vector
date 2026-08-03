@@ -359,11 +359,6 @@ export function CinematicOverlays({
                 ))}
               {tab === "traffic" && trafficPanel}
               {tab === "stats" && statsPanel}
-              {/* The credit rides at the end of the sheet's scroll on phones.
-                  Floated over the map it had nowhere to sit: wedged between
-                  the zoom controls and the sheet, it read as a stray tooltip
-                  in the only strip of map still visible. */}
-              <div className="sheet-credit">{credit}</div>
             </div>
           </>
         )}
@@ -371,9 +366,11 @@ export function CinematicOverlays({
 
       {/* ---------- credit + map attribution ---------- */}
       {/* Bottom-left on desktop, the way map apps corner their provider
-          credit. The OpenStreetMap and CARTO notices belong here too: their
-          licences require attribution, and MapLibre's own control is off. */}
-      <footer className="hud-credit wide-only">{credit}</footer>
+          credit; on phones it floats under the top bar instead, where it's
+          actually seen. The OpenStreetMap and CARTO notices belong here too:
+          their licences require attribution, and MapLibre's own control is
+          switched off. */}
+      <footer className="hud-credit">{credit}</footer>
     </div>
   );
 }

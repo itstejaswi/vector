@@ -486,9 +486,12 @@ button {
 .fx-end-code {
   margin-top: 5px;
   font-size: 32px;
-  font-weight: 300;
+  /* Medium, not light. At 32px a 300 weight thins out badly on a phone, and
+     these codes are the headline of the card; 600 tips over into competing
+     with the callsign above them. */
+  font-weight: 500;
   line-height: 1;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.02em;
   color: var(--amber-bright);
 }
 
@@ -1160,7 +1163,9 @@ button {
   position: absolute;
   left: 8px;
   right: 8px;
-  bottom: 8px;
+  /* Leaves room for the credit line along the bottom edge, and clears the
+     home indicator on phones that have one. */
+  bottom: calc(30px + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
   background: var(--material-thick);
@@ -1303,43 +1308,54 @@ button {
     margin-right: -0.16em;
   }
 
-  /* The credit at the end of the sheet's scroll on phones. Separated by a
-     hairline so it reads as a footer rather than another data row. */
-  .sheet-credit {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 5px 10px;
-    margin: 4px 16px 0;
-    padding: 11px 0 4px;
-    border-top: 0.5px solid var(--hairline);
-    font-size: 10px;
-    line-height: 1;
+  /*
+   * On phones the credit runs along the very bottom edge, below the sheet.
+   * It sat at the end of the sheet's scroll before, where nobody would find
+   * it, and the gaps around the collapsed sheet are far too tight to float a
+   * pill in - 17px above it, 8px below.
+   *
+   * No pill here: a bordered capsule at the screen's edge reads as a second
+   * control bar. Bare text over the map's darkest strip is quieter and lets
+   * the sheet keep the visual weight.
+   *
+   * Type scales with the viewport via clamp(), so it stays proportionate from
+   * a 320px phone up to a tablet.
+   */
+  .hud-credit {
+    top: auto;
+    bottom: calc(7px + env(safe-area-inset-bottom));
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    width: fit-content;
+    max-width: calc(100vw - 20px);
+    justify-content: center;
+    text-align: center;
+    padding: 0;
+    gap: clamp(2px, 0.8vw, 4px) clamp(6px, 2.2vw, 10px);
+    background: none;
+    border: 0;
+    border-radius: 0;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+    font-size: clamp(8.5px, 2.4vw, 10px);
     color: var(--text-3);
+    /* Only the attribution links need to be tappable; taps elsewhere fall
+       through to the map underneath. */
+    pointer-events: none;
+    /* The map runs from near-black to pale coastline, so unbacked text needs
+       its own shadow to stay legible over the light areas. */
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9), 0 0 8px rgba(0, 0, 0, 0.7);
   }
 
-  .sheet-credit .hud-credit-mine {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
+  .hud-credit a {
+    pointer-events: auto;
   }
 
-  .sheet-credit .hud-credit-part {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    white-space: nowrap;
-  }
-
-  .sheet-credit .hud-credit-attrib {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .sheet-credit a {
-    color: inherit;
-    text-decoration: none;
+  .hud-credit-attrib {
+    padding-left: clamp(6px, 2.2vw, 10px);
+    font-size: clamp(8px, 2.2vw, 9.5px);
   }
 
   .narrow-only {
@@ -1386,13 +1402,16 @@ button {
 
   .hud-zoom {
     right: 10px;
-    /* Sits above the collapsed sheet; moves when it opens. */
-    bottom: 78px;
+    /* Sits above the collapsed sheet, which now clears the credit line along
+       the bottom edge. Moves when the sheet opens. */
+    bottom: calc(100px + env(safe-area-inset-bottom));
     transition: bottom 0.28s var(--ease);
   }
 
   .hud.sheet-open .hud-zoom {
-    bottom: calc(56vh + 16px);
+    /* The sheet caps at 56vh and now starts 30px up from the bottom, so the
+       controls have to clear both to sit above it. */
+    bottom: calc(56vh + 38px + env(safe-area-inset-bottom));
   }
 
   .hud-zoom button {
@@ -1433,7 +1452,7 @@ button {
     max-height: 74vh;
   }
   .hud.sheet-open .hud-zoom {
-    bottom: 78px;
+    bottom: calc(100px + env(safe-area-inset-bottom));
   }
 }
 
