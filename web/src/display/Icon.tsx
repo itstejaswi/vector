@@ -103,32 +103,20 @@ const PATHS: Record<IconName, JSX.Element> = {
     </>
   ),
   /*
-   * Telemetry: a radar sweep. Concentric arcs with a bearing line, which reads
-   * as air-traffic surveillance rather than the phone-signal bars a plain bar
-   * chart suggests.
+   * Telemetry: a radar scope with its sweep. The bar chart this replaced read
+   * as phone signal strength rather than anything to do with aviation.
+   *
+   * Deliberately just a ring, a wedge and a pip. This renders at 12px in a
+   * panel header, and the obvious idea - a small aircraft sitting inside the
+   * scope - was tried and rejected: at that size the aircraft and the rings
+   * merge into an illegible smudge. A scope alone survives; a scope with
+   * detail inside it does not.
    */
   stats: (
     <>
-      <path
-        d="M8 13.6a5.6 5.6 0 1 1 5.6-5.6"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-      <path
-        d="M8 10.8a2.8 2.8 0 0 1 2.8-2.8"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-      <path
-        d="M8 8l4.6-4.6"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
+      <circle cx="8" cy="8" r="6.4" fill="none" stroke="currentColor" strokeWidth="1.4" />
+      {/* The sweep, caught mid-rotation. */}
+      <path d="M8 8 L8 1.6 A6.4 6.4 0 0 1 12.5 3.5 Z" fill="currentColor" fillOpacity="0.9" />
       <circle cx="8" cy="8" r="1.15" fill="currentColor" />
     </>
   ),
