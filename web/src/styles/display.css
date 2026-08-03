@@ -504,29 +504,31 @@ button {
   white-space: nowrap;
 }
 
+/* The aircraft sits between two 32px codes, so it needs enough presence to
+   hold that middle column rather than reading as a stray mark. */
 .fx-link {
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: 5px;
   padding: 0 6px;
   margin-top: 6px;
 }
 
 .fx-link-line {
-  width: 14px;
+  width: 15px;
   height: 0.5px;
   background: rgba(255, 170, 61, 0.4);
 }
 
 .fx-link-dot {
-  width: 3px;
-  height: 3px;
+  width: 3.5px;
+  height: 3.5px;
   border-radius: 50%;
   background: rgba(255, 170, 61, 0.5);
 }
 
 .fx-link-plane {
-  color: var(--amber);
+  color: var(--amber-bright);
 }
 
 .fx-rows {
@@ -563,10 +565,12 @@ button {
   font-variant-numeric: tabular-nums;
   color: var(--text);
   text-align: right;
-  max-width: 16ch;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* Wraps rather than truncates. A clipped aircraft type ("Airbus A320 251…")
+     hides the very thing the row exists to show, and these values are short
+     enough that a second line costs almost nothing. */
+  max-width: 17ch;
+  overflow-wrap: anywhere;
+  line-height: 1.25;
 }
 
 .fx-row.hot .fx-row-value {
@@ -697,12 +701,26 @@ button {
   white-space: nowrap;
 }
 
-.ct-alt {
+/*
+ * Flight-phase icon, in place of the altitude readout.
+ *
+ * Colour-coded so the column can be read at a glance without parsing the
+ * shapes: green climbing away, amber descending in, muted while level. That
+ * matches the map's own climb and descent markers.
+ */
+.ct-phase {
   min-width: 32px;
-  text-align: right;
-  font-size: 10.5px;
-  font-variant-numeric: tabular-nums;
+  display: flex;
+  justify-content: flex-end;
   color: var(--text-3);
+}
+
+.ct-phase.departure {
+  color: var(--ok);
+}
+
+.ct-phase.arrival {
+  color: var(--amber);
 }
 
 .ct-empty {

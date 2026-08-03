@@ -25,7 +25,10 @@ export type IconName =
   | "locate"
   | "close"
   | "chevron"
-  | "heart";
+  | "heart"
+  | "departure"
+  | "arrival"
+  | "cruising";
 
 interface Props {
   name: IconName;
@@ -153,6 +156,52 @@ const PATHS: Record<IconName, JSX.Element> = {
       d="M8 14.1l-1-.9C3.3 9.9 1.4 8.2 1.4 5.9c0-1.9 1.5-3.4 3.4-3.4 1.1 0 2.1.5 2.7 1.3l.5.7.5-.7c.6-.8 1.6-1.3 2.7-1.3 1.9 0 3.4 1.5 3.4 3.4 0 2.3-1.9 4-5.6 7.3z"
       fill="currentColor"
     />
+  ),
+
+  /*
+   * Flight phase, from Tabler Icons (MIT) — the same set the brand mark comes
+   * from, so they sit together naturally. Drawn on Tabler's 24 grid and scaled
+   * onto this 16 one; the 2 stroke lands at ~1.33 after scaling, which matches
+   * the weight of the hand-drawn icons beside them.
+   */
+  departure: (
+    <g
+      transform="scale(0.667)"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M14.639 10.258l4.83 -1.294a2 2 0 1 1 1.035 3.863l-14.489 3.883l-4.45 -5.02l2.897 -.776l2.45 1.414l2.897 -.776l-3.743 -6.244l2.898 -.777l5.675 5.727" />
+      <path d="M3 21h18" />
+    </g>
+  ),
+  arrival: (
+    <g
+      transform="scale(0.667)"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M15.157 11.81l4.83 1.295a2 2 0 1 1 -1.036 3.863l-14.489 -3.882l-1.345 -6.572l2.898 .776l1.414 2.45l2.898 .776l-.12 -7.279l2.898 .777l2.052 7.797" />
+      <path d="M3 21h18" />
+    </g>
+  ),
+  cruising: (
+    <g
+      transform="scale(0.667)"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M15 11.085h5a2 2 0 1 1 0 4h-15l-3 -6h3l2 2h3l-2 -7h3l4 7" />
+      <path d="M3 21h18" />
+    </g>
   ),
 };
 

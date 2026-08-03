@@ -118,6 +118,44 @@ export function cleanCallsign(raw: string | undefined): string | undefined {
   return cleaned.length >= 2 ? cleaned : undefined;
 }
 
+/**
+ * Tidy adsbdb's aircraft type into the form the industry actually writes.
+ *
+ * adsbdb returns the model and variant space-separated with fitment codes
+ * appended: "A320 251NSL", "737 36N/W", "787 8". Written properly those are
+ * "A320-251N", "737-36N" and "787-8" — the hyphen is the convention, and the
+ * SL / /W suffixes just mean sharklets and winglets, which no one reads.
+ *
+ * Deliberately conservative. Only a bare model-plus-variant pair is joined;
+ * anything carrying a name ("PA-28 161 Cadet", "182P Skylane") is left exactly
+ * as it came, because those aren't variant codes and hyphenating them would
+ * be wrong.
+ *
+ * Exported for tests.
+ */
+export function cleanTypeName(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  const trimmed = raw.trim().replace(/\s+/g, " ");
+  if (!trimmed) return undefined;
+
+  const parts = trimmed.split(" ");
+  if (parts.length !== 2) return trimmed;
+
+  const [model, rawVariant] = parts;
+  // Strip fitment suffixes: "/W" winglets, trailing "SL" sharklets.
+  const variant = rawVariant.replace(/\/W$/i, "").replace(/SL$/, "");
+  if (!variant) return model;
+
+  // A single trailing letter is a sub-model and closes up: "208 B" -> "208B".
+  if (/^[A-Z]$/i.test(variant)) return `${model}${variant}`;
+
+  // A variant proper starts with a digit and takes a hyphen.
+  if (/^\d/.test(variant)) return `${model}-${variant}`;
+
+  // Anything else is a name, not a variant.
+  return trimmed;
+}
+
 function normalize(raw: RawAircraft, ts: number): Aircraft | null {
   if (!raw.hex) return null;
   const onGround = raw.alt_baro === "ground";
@@ -504,8 +542,9 @@ export class SkyFeed {
         const json = (await res.json()) as any;
         const a = json?.response?.aircraft;
         if (a) {
+          const type = cleanTypeName(a.type);
           data = {
-            typeName: a.manufacturer && a.type ? `${a.manufacturer} ${a.type}` : a.type,
+            typeName: a.manufacturer && type ? `${a.manufacturer} ${type}` : type,
             registration: a.registration,
           };
         }

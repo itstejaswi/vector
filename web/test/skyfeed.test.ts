@@ -1,5 +1,40 @@
 import { describe, expect, it } from "vitest";
-import { cleanCallsign } from "../src/lib/skyfeed.js";
+import { cleanCallsign, cleanTypeName } from "../src/lib/skyfeed.js";
+
+describe("cleanTypeName", () => {
+  it("hyphenates a model and its variant", () => {
+    expect(cleanTypeName("A320 251N")).toBe("A320-251N");
+    expect(cleanTypeName("787 8")).toBe("787-8");
+    expect(cleanTypeName("777 36NER")).toBe("777-36NER");
+  });
+
+  it("drops sharklet and winglet fitment codes", () => {
+    // Real values seen from adsbdb; neither suffix is worth the width.
+    expect(cleanTypeName("A320 251NSL")).toBe("A320-251N");
+    expect(cleanTypeName("737 36N/W")).toBe("737-36N");
+  });
+
+  it("closes up a single-letter sub-model", () => {
+    expect(cleanTypeName("208 B")).toBe("208B");
+  });
+
+  it("leaves named types alone", () => {
+    // These carry a name, not a variant code; hyphenating would be wrong.
+    expect(cleanTypeName("PA-28 161 Cadet")).toBe("PA-28 161 Cadet");
+    expect(cleanTypeName("182P Skylane")).toBe("182P Skylane");
+    expect(cleanTypeName("Europa XS")).toBe("Europa XS");
+    expect(cleanTypeName("Twin Star DA42 NG")).toBe("Twin Star DA42 NG");
+  });
+
+  it("normalises whitespace", () => {
+    expect(cleanTypeName("  A320   251N  ")).toBe("A320-251N");
+  });
+
+  it("handles missing and empty input", () => {
+    expect(cleanTypeName(undefined)).toBeUndefined();
+    expect(cleanTypeName("   ")).toBeUndefined();
+  });
+});
 
 describe("cleanCallsign", () => {
   it("keeps a normal callsign", () => {

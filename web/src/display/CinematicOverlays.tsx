@@ -104,7 +104,7 @@ export function CinematicOverlays({
           <div className="fx-link">
             <span className="fx-link-dot" />
             <span className="fx-link-line" />
-            <Icon name="planeRight" size={12} className="fx-link-plane" />
+            <Icon name="planeRight" size={17} className="fx-link-plane" />
             <span className="fx-link-line" />
             <span className="fx-link-dot" />
           </div>
@@ -139,22 +139,30 @@ export function CinematicOverlays({
       </div>
     ) : (
       <div className="ct-list">
-        {contacts.map((ac) => (
-          <button
-            type="button"
-            key={ac.hex}
-            className={"ct-row" + (ac.hex === selectedHex ? " active" : "")}
-            onClick={() => onSelect(ac.hex)}
-          >
-            <span className="ct-call">{(ac.flight || ac.hex).toUpperCase()}</span>
-            <span className="ct-route">
-              {ac.origin && ac.destination
-                ? `${ac.origin} → ${ac.destination}`
-                : ac.typeCode || "—"}
-            </span>
-            <span className="ct-alt">{shortAlt(ac)}</span>
-          </button>
-        ))}
+        {contacts.map((ac) => {
+          const ph = phase(ac);
+          return (
+            <button
+              type="button"
+              key={ac.hex}
+              className={"ct-row" + (ac.hex === selectedHex ? " active" : "")}
+              onClick={() => onSelect(ac.hex)}
+            >
+              <span className="ct-call">{(ac.flight || ac.hex).toUpperCase()}</span>
+              <span className="ct-route">
+                {ac.origin && ac.destination
+                  ? `${ac.origin} → ${ac.destination}`
+                  : ac.typeCode || "—"}
+              </span>
+              <span
+                className={"ct-phase " + ph.icon}
+                title={`${ph.label} · ${shortAlt(ac)}`}
+              >
+                <Icon name={ph.icon} size={14} />
+              </span>
+            </button>
+          );
+        })}
       </div>
     );
 
@@ -463,6 +471,26 @@ function shortAlt(ac: Aircraft): string {
   const a = ac.altBaro ?? ac.altGeom;
   if (a == null) return "—";
   return a >= 1000 ? `${Math.round(a / 1000)}k` : String(a);
+}
+
+/**
+ * Which phase of flight an aircraft is in, for the traffic list's icon.
+ *
+ * Vertical rate is the only signal available: the feed doesn't say whether a
+ * flight is inbound or outbound, and inferring it from the route would be
+ * wrong as often as right — an aircraft merely passing overhead is neither.
+ * Climbing therefore reads as departing and descending as arriving, which is
+ * what the rate actually tells us.
+ *
+ * The +-250 ft/min band matches `status()`, so the list and the flight card
+ * never disagree about the same aircraft.
+ */
+function phase(ac: Aircraft): { icon: IconName; label: string } {
+  if (ac.onGround) return { icon: "departure", label: "On ground" };
+  const r = ac.baroRate;
+  if (r != null && r > 250) return { icon: "departure", label: "Climbing" };
+  if (r != null && r < -250) return { icon: "arrival", label: "Descending" };
+  return { icon: "cruising", label: "Level" };
 }
 
 function status(ac: Aircraft): string {
