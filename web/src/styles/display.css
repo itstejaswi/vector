@@ -693,19 +693,23 @@ button {
 
 /* ---------------- credit ---------------- */
 
-/* Flex with a fixed gap, and a drawn dot rather than a "·" character: the
-   glyph's own bearings differ per font, so a typed separator lands off-centre
-   both horizontally and vertically. */
+/* Cornered like a map app's provider credit: bottom-left, because the zoom
+   controls own the bottom-right. The separator is a drawn dot rather than a
+   "·" character, whose bearings differ per font and land it off-centre both
+   horizontally and vertically. */
 .hud-credit {
   position: absolute;
-  left: 50%;
-  bottom: 18px;
-  transform: translateX(-50%);
+  /* Aligned with the rail above it rather than hugging the corner, so the
+     left edge of the HUD reads as one column. */
+  left: 24px;
+  bottom: 20px;
+  /* Never run under the panels on a narrow desktop window. */
+  max-width: calc(100vw - 48px);
   display: flex;
   align-items: center;
-  gap: 10px;
-  height: 30px;
-  padding: 0 18px;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  padding: 6px 13px;
   background: var(--material);
   border: 0.5px solid var(--stroke);
   border-radius: 999px;
@@ -714,13 +718,39 @@ button {
   box-shadow: var(--shadow);
   font-weight: 400;
   font-size: 11.5px;
-  /* Match the box so the text centres optically inside the pill. Flex
-     alignment handles the vertical, so line-height stays at 1. */
+  /* Flex handles the vertical centring, so line-height stays at 1. */
   line-height: 1;
   letter-spacing: 0;
   color: var(--text-2);
-  white-space: nowrap;
   pointer-events: auto;
+}
+
+.hud-credit-mine {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Attribution reads as secondary to the credit beside it. */
+.hud-credit-attrib {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 10px;
+  box-shadow: inset 1px 0 0 var(--hairline);
+  font-size: 10.5px;
+  color: var(--text-3);
+}
+
+.hud-credit-attrib a {
+  color: inherit;
+  text-decoration: none;
+  transition: color 0.16s var(--ease);
+}
+
+.hud-credit-attrib a:hover {
+  color: var(--text);
+  text-decoration: underline;
 }
 
 /* Each half is its own flex row, so the heart can be spaced independently
@@ -729,6 +759,7 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  white-space: nowrap;
 }
 
 /* Drawn, not typed: a 3px disc always sits exactly where we put it.
@@ -748,22 +779,24 @@ button {
   animation: heartbeat 2.6s var(--ease) infinite;
 }
 
+/* The nudge these frames used to carry belonged to the old text glyph; the
+   SVG sits on the baseline by itself, so this is pure scale. */
 @keyframes heartbeat {
   0%,
   100% {
-    transform: translateY(0.5px) scale(1);
+    transform: scale(1);
   }
   8% {
-    transform: translateY(0.5px) scale(1.24);
+    transform: scale(1.24);
   }
   16% {
-    transform: translateY(0.5px) scale(1);
+    transform: scale(1);
   }
   24% {
-    transform: translateY(0.5px) scale(1.15);
+    transform: scale(1.15);
   }
   32% {
-    transform: translateY(0.5px) scale(1);
+    transform: scale(1);
   }
 }
 
@@ -1029,6 +1062,10 @@ button {
     width: 236px;
     left: 16px;
   }
+  .hud-credit {
+    left: 16px;
+    max-width: calc(100vw - 32px);
+  }
   .hud-strip {
     display: none;
   }
@@ -1165,9 +1202,47 @@ button {
 @media (max-width: 700px) {
   .wide-only,
   .hud-bk,
-  .hud-scanlines,
-  .hud-credit {
+  .hud-scanlines {
     display: none !important;
+  }
+
+  /* The credit stays: OpenStreetMap and CARTO have to be credited on a phone
+     too. It sits above the collapsed sheet, bottom-aligned with the zoom
+     controls beside it. */
+  .hud-credit {
+    left: 10px;
+    /* Stop clear of the zoom controls, which are 41px wide at a 10px inset.
+       Width follows the inset so the text wraps rather than running off. */
+    right: 68px;
+    bottom: 78px;
+    max-width: none;
+    width: auto;
+    justify-content: flex-start;
+    padding: 6px 11px;
+    gap: 3px 8px;
+    /* A pill only reads right on one line; once it wraps, round the corners
+       instead. */
+    border-radius: 13px;
+    font-size: 10px;
+    transition: opacity 0.2s var(--ease), visibility 0.2s var(--ease);
+  }
+
+  /* An expanded sheet leaves too little map for a floating credit — it reads
+     as a stray tooltip. Fade it out and bring it back on collapse, which is
+     what map apps do with their attribution. */
+  .hud.sheet-open .hud-credit {
+    opacity: 0;
+    visibility: hidden;
+  }
+
+  .hud-credit-mine {
+    gap: 8px;
+  }
+
+  .hud-credit-attrib {
+    padding-left: 0;
+    box-shadow: none;
+    font-size: 9.5px;
   }
 
   .narrow-only {
