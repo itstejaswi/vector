@@ -18,11 +18,17 @@ const AIRCRAFT_API = "https://api.airplanes.live/v2/point";
 const ADSBDB_API = "https://api.adsbdb.com/v0";
 
 const CONFIG_KEY = "vector.config";
-const ROUTE_CACHE_KEY = "vector.routes";
+/*
+ * Versioned because entries outlive a deploy: the cache holds enrichment for
+ * 12 hours, so changing how a value is formatted leaves stale ones on screen
+ * until they expire. Bumping the suffix retires the old store outright.
+ */
+const ROUTE_CACHE_KEY = "vector.routes.v2";
+/** Superseded stores, cleared on load so they don't sit in localStorage. */
+const STALE_CACHE_KEYS = ["vector.routes", "skylight.routes"];
 /** Keys used before the project was renamed from Skylight to Vector. */
 const LEGACY_KEYS: Record<string, string> = {
   "skylight.config": CONFIG_KEY,
-  "skylight.routes": ROUTE_CACHE_KEY,
 };
 
 const POLL_MS = 3000;
@@ -238,6 +244,15 @@ function loadConfig(): Config {
 }
 
 function loadRouteCache(): RouteCache {
+  // Retire superseded stores so they don't linger in localStorage. Their
+  // contents are cheap to refetch and would otherwise be formatted the old way.
+  for (const key of STALE_CACHE_KEYS) {
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      // storage blocked (private mode) — nothing to clean up
+    }
+  }
   try {
     const raw = localStorage.getItem(ROUTE_CACHE_KEY);
     if (!raw) return { routes: {}, types: {} };

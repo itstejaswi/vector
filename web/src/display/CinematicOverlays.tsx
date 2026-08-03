@@ -51,10 +51,15 @@ export function CinematicOverlays({
     return () => clearInterval(t);
   }, []);
 
-  // Collapse the sheet when the focused flight changes, so it doesn't stay
-  // open over the map after the nearest aircraft rotates away.
+  // Collapse the sheet when the focus changes on its own - when a selection is
+  // dropped and the panel falls back to the nearest aircraft, which rotates as
+  // traffic moves. A deliberate pick is the opposite: the user has just asked
+  // to see that aircraft, so closing the sheet on them throws the detail away
+  // the instant they open it.
   useEffect(() => {
-    setExpanded(false);
+    if (selectedHex == null) setExpanded(false);
+    // A deliberate pick is a request to see that flight, so show its tab.
+    else setTab("flight");
   }, [selectedHex]);
 
   const selected = useMemo(
