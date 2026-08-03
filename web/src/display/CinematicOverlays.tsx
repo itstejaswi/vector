@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { Aircraft } from "@shared/index.js";
 import { distSq, greatCircleKm, milesToKm } from "@shared/index.js";
 import { BrandMark, Icon, type IconName } from "./Icon.js";
+import { SplitFlap } from "./SplitFlap.js";
 
 interface Props {
   locationName: string;
@@ -91,7 +92,9 @@ export function CinematicOverlays({
   const flightPanel = focus && (
     <>
       <div className="fx-call">
-        <span className="fx-call-id">{(focus.flight || focus.hex).toUpperCase()}</span>
+        <span className="fx-call-id">
+          <SplitFlap value={(focus.flight || focus.hex).toUpperCase()} />
+        </span>
         {focus.airline && <span className="fx-call-airline">{focus.airline}</span>}
       </div>
 
@@ -175,12 +178,14 @@ export function CinematicOverlays({
   const credit = (
     <>
       <span className="hud-credit-mine">
-        <span className="hud-credit-part">Vibe coded by Tejaswi</span>
+        <span className="hud-credit-part">
+          Vibe coded by <b className="hud-credit-name">Tejaswi</b>
+        </span>
         <span className="hud-credit-dot" aria-hidden="true" />
         <span className="hud-credit-part">
           built with
           <Icon name="heart" size={11} className="hud-credit-heart" />
-          and Microsoft Scout
+          and <b className="hud-credit-name">Microsoft Scout</b>
         </span>
       </span>
       <span className="hud-credit-attrib">
@@ -390,7 +395,10 @@ function Endpoint({
   return (
     <div className="fx-end">
       <div className="fx-end-kind">{kind}</div>
-      <div className="fx-end-code">{code ? code.toUpperCase() : "—"}</div>
+      <div className="fx-end-code">
+        {/* Riffles to the new code the way an airport board does. */}
+        <SplitFlap value={code ? code.toUpperCase() : "---"} width={3} />
+      </div>
       {city && <div className="fx-end-city">{city}</div>}
     </div>
   );
@@ -419,7 +427,9 @@ function Metric({
 function Cell({ label, value }: { label: string; value: string }) {
   return (
     <div className="tm-cell">
-      <span className="tm-cell-value">{value}</span>
+      <span className="tm-cell-value">
+        <SplitFlap value={value} />
+      </span>
       <span className="tm-cell-label">{label}</span>
     </div>
   );

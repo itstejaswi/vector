@@ -2,42 +2,31 @@
   <title>Vector</title>
 
   <!--
-    An original mark, drawn for this project: an airliner climbing away on its
-    contrail. Every path is plain geometry specified by coordinate - nothing is
-    traced from, sampled from, or derived from any existing logo.
+    Departing airliner over a runway.
 
-    The geometry is physically coherent, which took a correction. The aircraft
-    flies at 45 degrees, so the contrail has to lie ALONG that same 45 degrees,
-    streaming back from the tail. An earlier draft had a curved trail that
-    arrived at 61 degrees and started at 18, so it crossed the flight path
-    instead of following it - the aircraft appeared to have flown one way while
-    its trail went another.
+    The artwork is the "plane-departure" icon from Tabler Icons, used under the
+    MIT licence and recoloured to the Vector palette. Attribution is in the
+    README alongside the other upstream credits.
 
-    The trail therefore starts at the tail point (13.62, 18.38 in this box) and
-    runs on the exact reverse heading. It widens as it recedes, the way a real
-    contrail spreads as it disperses, and fades out at its far end.
-
-    Weights are deliberately heavy: at a 16px favicon, finer shapes vanish.
+    Two things are tuned rather than taken as-is. The icon is scaled up and
+    inset so it sits with some air in the tile rather than filling it, and the
+    stroke is 1.5 rather than Tabler's 2 - a lighter line reads better at the
+    sizes this is actually seen at.
   -->
 
   <defs>
-    <linearGradient id="vg-body" x1="8" y1="24" x2="24" y2="8" gradientUnits="userSpaceOnUse">
+    <linearGradient id="vg" x1="6" y1="26" x2="26" y2="6" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#ff9e22"/>
       <stop offset="1" stop-color="#ffd9a0"/>
-    </linearGradient>
-    <linearGradient id="vg-trail" x1="4.5" y1="27.5" x2="14" y2="18" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#ffaa3d" stop-opacity="0"/>
-      <stop offset="1" stop-color="#ffaa3d" stop-opacity="0.9"/>
     </linearGradient>
   </defs>
 
   <rect width="32" height="32" rx="7.2" fill="#06070a"/>
 
-  <!-- Contrail: on the aircraft's exact reverse heading, widening as it goes. -->
-  <path d="M14.68 18.88 L5.49 29.48 L2.52 26.51 L13.12 17.32Z" fill="url(#vg-trail)"/>
-
-  <!-- Fuselage, swept wings and tailplane, drawn nose-up then banked 45. -->
-  <path transform="translate(20 12) rotate(45) scale(1.18)"
-        d="M0 -7.6c.85 0 1.42 1.05 1.42 2.55v1.7l5.5 3.4v1.9l-5.5-1.75v3.3l2.1 1.55v1.5L0 6.6l-3.52 1.05v-1.5l2.1-1.55v-3.3l-5.5 1.75v-1.9l5.5-3.4v-1.7C-1.42-6.55-.85-7.6 0-7.6Z"
-        fill="url(#vg-body)"/>
+  <g transform="translate(2.5 3) scale(1.12)"
+     fill="none" stroke="url(#vg)" stroke-width="1.5"
+     stroke-linecap="round" stroke-linejoin="round">
+    <path d="M14.639 10.258l4.83 -1.294a2 2 0 1 1 1.035 3.863l-14.489 3.883l-4.45 -5.02l2.897 -.776l2.45 1.414l2.897 -.776l-3.743 -6.244l2.898 -.777l5.675 5.727"/>
+    <path d="M3 21h18"/>
+  </g>
 </svg>

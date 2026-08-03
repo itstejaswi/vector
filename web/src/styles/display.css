@@ -768,9 +768,12 @@ button {
 /* ---------------- credit ---------------- */
 
 /* Cornered like a map app's provider credit: bottom-left, because the zoom
-   controls own the bottom-right. The separator is a drawn dot rather than a
-   "·" character, whose bearings differ per font and land it off-centre both
-   horizontally and vertically. */
+   controls own the bottom-right. Styled as a panel rather than a pill, so it
+   belongs to the same family as the telemetry and traffic tiles - same
+   material, same radius, same hairline, same letter-spacing as their footers.
+
+   The separator is a drawn dot rather than a "·" character, whose bearings
+   differ per font and land it off-centre both horizontally and vertically. */
 .hud-credit {
   position: absolute;
   /* Aligned with the rail above it rather than hugging the corner, so the
@@ -783,19 +786,20 @@ button {
   align-items: center;
   flex-wrap: wrap;
   gap: 6px 10px;
-  padding: 6px 13px;
+  padding: 9px 14px;
   background: var(--material);
   border: 0.5px solid var(--stroke);
-  border-radius: 999px;
+  border-radius: var(--radius);
   backdrop-filter: var(--blur);
   -webkit-backdrop-filter: var(--blur);
   box-shadow: var(--shadow);
-  font-weight: 400;
-  font-size: 11.5px;
+  /* Matches .tm-foot, the panel footers this now sits alongside. */
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
   /* Flex handles the vertical centring, so line-height stays at 1. */
   line-height: 1;
-  letter-spacing: 0;
-  color: var(--text-2);
+  color: var(--text-3);
   pointer-events: auto;
 }
 
@@ -846,6 +850,13 @@ button {
   background: var(--text-3);
   flex: none;
   transform: translateY(-0.5px);
+}
+
+/* The two names carry the credit, so they take the weight and the amber the
+   panel headers use; the connecting words stay quiet around them. */
+.hud-credit-name {
+  font-weight: 600;
+  color: var(--amber-dim);
 }
 
 .hud-credit-heart {
@@ -1486,6 +1497,54 @@ button {
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
   }
+}
+
+/* ---------------- split-flap ---------------- */
+
+/*
+ * Airport-board lettering for the values that change: the callsign, the
+ * airport codes, and the telemetry readouts.
+ *
+ * Only the riffle is marked up; a settled value is plain text, so the type
+ * keeps its real kerning and nothing about the resting state changes.
+ *
+ * While it runs, an invisible copy of the final text holds the width and the
+ * churning characters are laid over it. That stops the block jittering as
+ * glyph widths change mid-spin without imposing fixed cells on the settled
+ * text - which cannot look right with a proportional face, where W is 0.93em
+ * and I is 0.26em.
+ */
+.flap {
+  display: inline-grid;
+  /* Both children occupy the same cell; the sizer wins on width. */
+  grid-template-areas: "f";
+  font-variant-numeric: tabular-nums;
+}
+
+.flap-sizer,
+.flap-run {
+  grid-area: f;
+  white-space: pre;
+}
+
+/* Reserves the settled width without ever being seen. */
+.flap-sizer {
+  visibility: hidden;
+}
+
+.flap-run {
+  display: flex;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.flap-cell {
+  display: inline-block;
+  /* Wide enough for the widest glyph that spins through, so characters never
+     collide mid-riffle. Only ever seen while running. */
+  width: 0.72em;
+  text-align: center;
+  white-space: pre;
 }
 
 /* ---------------- cursor glow ---------------- */

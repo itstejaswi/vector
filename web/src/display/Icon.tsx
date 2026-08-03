@@ -12,8 +12,6 @@
  * up with their labels and scale with one number.
  */
 
-import { useId } from "react";
-
 export type IconName =
   | "plane"
   | "planeRight"
@@ -175,21 +173,21 @@ export function Icon({ name, size = 14, className, rotate }: Props) {
 }
 
 /**
- * The Vector brand mark: an airliner climbing away on its contrail. Drawn from
- * scratch — every path is plain geometry specified by coordinate, nothing
- * traced from or derived from any existing logo.
+ * The Vector brand mark: a departing airliner over a runway.
  *
- * The trail lies on the aircraft's exact reverse heading, so the two agree: an
- * earlier draft curved across the flight path, which made the aircraft look
- * like it had flown one way while its contrail went another.
+ * The artwork is the "plane-departure" icon from Tabler Icons, used under the
+ * MIT licence and recoloured; the README credits it alongside the other
+ * upstream sources.
  *
- * Kept out of the icon table because it's two-tone (the trail fades) and
- * because it must match public/favicon.svg, so the browser tab and the app
- * show the same mark. Geometry is the favicon's, halved onto this 16x16 grid.
+ * This must match public/favicon.svg so the browser tab and the app show the
+ * same mark. Geometry is the favicon's, halved onto this 16x16 grid: scale
+ * 1.12 becomes 0.56 and the inset halves. The stroke stays at 1.5 because it
+ * sits inside the scaled group in both files, so it scales with them.
+ *
+ * Kept out of the icon table because it's stroked rather than filled and
+ * carries its own transform.
  */
 export function BrandMark({ size = 20, className }: { size?: number; className?: string }) {
-  // Gradient ids are document-global, so two instances would collide.
-  const id = useId();
   return (
     <svg
       className={className ? `icon ${className}` : "icon"}
@@ -199,30 +197,17 @@ export function BrandMark({ size = 20, className }: { size?: number; className?:
       focusable="false"
       aria-hidden="true"
     >
-      <defs>
-        {/* The contrail disperses towards its far end. Both stops are
-            currentColor, so the mark takes the colour of whatever it sits
-            beside. */}
-        <linearGradient
-          id={id}
-          x1="2.25"
-          y1="13.75"
-          x2="7"
-          y2="9"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0" stopColor="currentColor" stopOpacity="0" />
-          <stop offset="1" stopColor="currentColor" stopOpacity="0.9" />
-        </linearGradient>
-      </defs>
-      {/* Contrail: the aircraft's exact reverse heading, widening as it goes. */}
-      <path d="M7.34 9.44 L2.75 14.74 L1.26 13.26 L6.56 8.66Z" fill={`url(#${id})`} />
-      {/* Fuselage, swept wings and tailplane, drawn nose-up then banked 45. */}
-      <path
-        transform="translate(10 6) rotate(45) scale(0.59)"
-        d="M0 -7.6c.85 0 1.42 1.05 1.42 2.55v1.7l5.5 3.4v1.9l-5.5-1.75v3.3l2.1 1.55v1.5L0 6.6l-3.52 1.05v-1.5l2.1-1.55v-3.3l-5.5 1.75v-1.9l5.5-3.4v-1.7C-1.42-6.55-.85-7.6 0-7.6Z"
-        fill="currentColor"
-      />
+      <g
+        transform="translate(1.25 1.5) scale(0.56)"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M14.639 10.258l4.83 -1.294a2 2 0 1 1 1.035 3.863l-14.489 3.883l-4.45 -5.02l2.897 -.776l2.45 1.414l2.897 -.776l-3.743 -6.244l2.898 -.777l5.675 5.727" />
+        <path d="M3 21h18" />
+      </g>
     </svg>
   );
 }
