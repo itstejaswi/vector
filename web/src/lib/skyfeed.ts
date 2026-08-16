@@ -101,6 +101,35 @@ export interface StreamState {
 
 type Listener = (state: StreamState) => void;
 
+/**
+ * Turn a fetch failure into something a visitor can act on.
+ *
+ * A browser reports a CORS rejection as a bare "Failed to fetch" with no
+ * detail, because the response is withheld from the page entirely. That is
+ * indistinguishable from being offline unless we say otherwise, and the
+ * distinction matters: one is the visitor's connection, the other is the feed
+ * provider declining browser traffic and nothing the visitor can fix.
+ */
+function describeFeedError(err: unknown): string {
+  if (!navigator.onLine) return "offline";
+
+  const message = err instanceof Error ? err.message : "";
+
+  if (err instanceof DOMException && err.name === "TimeoutError") {
+    return "feed timed out";
+  }
+  if (/Failed to fetch|NetworkError|Load failed/i.test(message)) {
+    return "feed unreachable - the provider is refusing browser requests";
+  }
+  if (/^HTTP 4\d\d$/.test(message)) {
+    return `feed refused the request (${message})`;
+  }
+  if (/^HTTP 5\d\d$/.test(message)) {
+    return `feed is having trouble (${message})`;
+  }
+  return message || "feed unavailable";
+}
+
 /** Raw aircraft record from airplanes.live (the subset we consume). */
 interface RawAircraft {
   hex?: string;
@@ -505,7 +534,7 @@ export class SkyFeed {
           ok: false,
           count: this.state.aircraft.length,
           lastOk: this.state.status?.lastOk ?? null,
-          message: err instanceof Error ? err.message : "feed unavailable",
+          message: describeFeedError(err),
         },
       });
     } finally {
