@@ -123,11 +123,8 @@ function describeFeedError(err: unknown, provider: Provider): string {
   if (/Failed to fetch|NetworkError|Load failed/i.test(message)) {
     // The likely cause, and the only one the visitor can do anything about.
     return provider.id === "airplanes.live"
-      ? "airplanes.live is refusing browser requests - add an AirLabs key in settings"
-      : `${provider.label} is unreachable`;
-  }
-  if (/api_key|apikey/i.test(message)) {
-    return "that key was not accepted";
+      ? "airplanes.live is refusing browser requests - see the feed panel"
+      : `${provider.label} is unreachable - check the proxy URL`;
   }
   if (/^HTTP 4\d\d$/.test(message)) {
     return `${provider.label} refused the request (${message})`;
@@ -446,7 +443,7 @@ export class SkyFeed {
       patch.centerLat !== undefined ||
       patch.centerLon !== undefined ||
       patch.radiusMiles !== undefined ||
-      patch.apiKey !== undefined
+      patch.feedProxy !== undefined
     ) {
       // Old tracks belong to the old view; keep them and they'd smear across
       // the map as unrelated streaks.

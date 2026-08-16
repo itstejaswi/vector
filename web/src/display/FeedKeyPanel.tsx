@@ -2,32 +2,39 @@ import { useEffect, useState } from "react";
 import { Icon } from "./Icon.js";
 
 interface Props {
-  apiKey: string;
-  onSave: (key: string) => void;
+  feedProxy: string;
+  onSave: (url: string) => void;
 }
 
+const REPO = "https://github.com/itstejaswi/vector";
+
 /**
- * Feed key panel.
+ * Feed panel.
  *
  * Shown only when the position feed is failing, because until August 2026 it
- * never needed to exist: airplanes.live answered browsers without a key and
+ * had no reason to exist: airplanes.live answered browsers without a key and
  * the app had nothing to configure. Then every free ADS-B network closed
- * browser access at once, and the only one still answering wants a key.
+ * browser access at once.
+ *
+ * The data is still public - adsb.lol serves it openly - but without an
+ * `access-control-allow-origin` header the browser discards the response
+ * before the page sees it, and only the server can change that. So the fix is
+ * a small shim the visitor runs themselves, and this panel is where its URL
+ * goes.
  *
  * It is deliberately not a permanent settings pane. Nobody opens a flight
- * tracker wanting to think about API credentials, so the panel appears when
- * there is a problem it can solve, explains what happened, and goes away once
- * aircraft are on screen.
+ * tracker wanting to think about infrastructure, so the panel appears when
+ * there is a problem it can solve and goes away once aircraft are on screen.
  */
-export function FeedKeyPanel({ apiKey, onSave }: Props) {
-  const [value, setValue] = useState(apiKey);
+export function FeedKeyPanel({ feedProxy, onSave }: Props) {
+  const [value, setValue] = useState(feedProxy);
   const [open, setOpen] = useState(false);
 
-  // Reflect a key set elsewhere (another tab, a reset) without clobbering
+  // Reflect a URL set elsewhere (another tab, a reset) without clobbering
   // whatever is being typed here.
   useEffect(() => {
-    if (!open) setValue(apiKey);
-  }, [apiKey, open]);
+    if (!open) setValue(feedProxy);
+  }, [feedProxy, open]);
 
   function save() {
     onSave(value.trim());
@@ -42,7 +49,7 @@ export function FeedKeyPanel({ apiKey, onSave }: Props) {
         onClick={() => setOpen(true)}
       >
         <Icon name="status" size={13} />
-        <span>Fix the feed</span>
+        <span>Why is the map empty?</span>
       </button>
     );
   }
@@ -50,7 +57,7 @@ export function FeedKeyPanel({ apiKey, onSave }: Props) {
   return (
     <div className="feedkey">
       <div className="feedkey-head">
-        <strong>The feed needs a key</strong>
+        <strong>The feed closed its doors</strong>
         <button
           type="button"
           className="feedkey-close"
@@ -64,25 +71,32 @@ export function FeedKeyPanel({ apiKey, onSave }: Props) {
       <p className="feedkey-body">
         Vector read positions from airplanes.live, which was open to browsers
         and needed no key. In August 2026 that changed, and every other free
-        ADS-B network closed browser access at about the same time. Nothing
-        here can work around it: only the API's owner can allow a browser to
-        call it.
+        ADS-B network closed browser access at about the same time.
       </p>
       <p className="feedkey-body">
-        AirLabs still does.{" "}
-        <a href="https://airlabs.co" target="_blank" rel="noreferrer">
-          Take a free key
+        The data is still public. adsb.lol serves it to anyone who asks - just
+        not to a browser, because it sends no CORS header and only the server
+        can change that.
+      </p>
+      <p className="feedkey-body">
+        The way round it is a shim you run yourself:{" "}
+        <a
+          href={`${REPO}/blob/main/worker/index.js`}
+          target="_blank"
+          rel="noreferrer"
+        >
+          worker/index.js
         </a>{" "}
-        and paste it below. It stays in this browser and is sent only to
-        AirLabs.
+        is about a hundred lines, free to run on Cloudflare, and does nothing
+        but fetch and add the header. Deploy it, then paste the URL here.
       </p>
 
       <div className="feedkey-row">
         <input
-          type="password"
+          type="url"
           className="feedkey-input"
           value={value}
-          placeholder="AirLabs API key"
+          placeholder="https://your-worker.workers.dev"
           spellCheck={false}
           autoComplete="off"
           onChange={(e) => setValue(e.target.value)}
@@ -96,7 +110,7 @@ export function FeedKeyPanel({ apiKey, onSave }: Props) {
         </button>
       </div>
 
-      {apiKey && (
+      {feedProxy && (
         <button
           type="button"
           className="feedkey-clear"
@@ -105,7 +119,7 @@ export function FeedKeyPanel({ apiKey, onSave }: Props) {
             onSave("");
           }}
         >
-          Remove the saved key
+          Forget this address
         </button>
       )}
     </div>

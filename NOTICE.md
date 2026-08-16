@@ -40,7 +40,7 @@ Every other icon in the HUD is drawn for this project.
 These are services rather than bundled code, credited in-app as their terms
 require:
 
-- **AirLabs** — live aircraft positions, when a key is configured
+- **adsb.lol** — live aircraft positions, via a shim you host
 - **airplanes.live** — live aircraft positions (see the note below)
 - **adsbdb** — route and airframe lookups
 - **Nominatim** / OpenStreetMap contributors — place-name geocoding
@@ -59,17 +59,24 @@ network closed browser access within roughly the same window.
 | adsb.lol | Serves data, sends no `access-control-allow-origin` |
 | adsb.fi | Serves data, sends no `access-control-allow-origin` |
 | OpenSky | `access-control-allow-origin: https://opensky-network.org` — its own site only |
+| AirLabs | Sends the header, but registration is closed to a waiting list |
 
 None of that is something a browser can work around. CORS is enforced by the
 browser and only the API's owner can relax it.
 
-AirLabs still answers browsers and is used when a key is supplied. **No key is
-bundled with this repository**, and that is deliberate: the project is public
-and MIT licensed, so a shipped key would become everyone's key and land the
-provider with traffic from every fork at once. Bring your own from
-[airlabs.co](https://airlabs.co) and enter it in settings.
+The data itself is still public: adsb.lol serves it to anyone who asks, just
+not to a browser. `worker/index.js` is a small Cloudflare Worker that fetches
+from adsb.lol and adds the one header a browser needs — nothing else. Deploy
+your own and give Vector the URL.
+
+**No endpoint is bundled with this repository.** That is deliberate: the
+project is public and MIT licensed, so a shipped address would become
+everyone's address, and land whichever service it points at with traffic from
+every fork at once. The same reasoning is why the Worker sends a `user-agent`
+naming this project — a free feed deserves to know who is calling it.
 
 Thanks are owed to all of these operators regardless. Running a public ADS-B
 network is expensive and largely thankless, and a hobby project like this one
 exists entirely on their generosity.
+
 

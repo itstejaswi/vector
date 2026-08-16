@@ -179,8 +179,8 @@ export function Display() {
           while aircraft are arriving. */}
       {state.status?.ok === false && (
         <FeedKeyPanel
-          apiKey={cfg.apiKey ?? ""}
-          onSave={(apiKey) => conn.patchConfig({ apiKey })}
+          feedProxy={cfg.feedProxy ?? ""}
+          onSave={(feedProxy) => conn.patchConfig({ feedProxy })}
         />
       )}
 
