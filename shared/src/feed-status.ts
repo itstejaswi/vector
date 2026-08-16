@@ -9,4 +9,6 @@ export interface FeedStatus {
   lastOk: number | null;
   /** Human-readable note: the upstream name, or the last error. */
   message?: string;
+  /** True when the aircraft are a replayed capture rather than live traffic. */
+  demo?: boolean;
 }

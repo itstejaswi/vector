@@ -82,4 +82,15 @@ Thanks are owed to all of these operators regardless. Running a public ADS-B
 network is expensive and largely thankless, and a hobby project like this one
 exists entirely on their generosity.
 
+### The demo
+
+A visitor with no feed configured sees a captured minute of London airspace
+replayed rather than an empty map — 26 aircraft from adsb.lol, advanced along
+their own headings at their own ground speeds. The callsigns, registrations,
+types and altitudes are exactly as they were recorded; only time moves. It
+loops every fifteen minutes and the HUD reads DEMO throughout, because a
+recording pretending to be live would be precisely the dishonesty the rest of
+this file goes out of its way to avoid.
+
+
 

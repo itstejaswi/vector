@@ -4,6 +4,8 @@ import { Icon } from "./Icon.js";
 interface Props {
   apiKey: string;
   feedProxy: string;
+  /** True while the replayed capture is playing rather than a live feed. */
+  isDemo: boolean;
   onSave: (patch: { apiKey?: string; feedProxy?: string }) => void;
 }
 
@@ -25,7 +27,7 @@ const REPO = "https://github.com/itstejaswi/vector";
  * tracker wanting to think about credentials, so the panel appears when there
  * is a problem it can solve and goes away once aircraft are on screen.
  */
-export function FeedKeyPanel({ apiKey, feedProxy, onSave }: Props) {
+export function FeedKeyPanel({ apiKey, feedProxy, isDemo, onSave }: Props) {
   const [tab, setTab] = useState<"key" | "proxy">(
     feedProxy && !apiKey ? "proxy" : "key"
   );
@@ -60,7 +62,7 @@ export function FeedKeyPanel({ apiKey, feedProxy, onSave }: Props) {
         onClick={() => setOpen(true)}
       >
         <Icon name="status" size={13} />
-        <span>Why is the map empty?</span>
+        <span>{isDemo ? "Go live" : "Why is the map empty?"}</span>
       </button>
     );
   }
@@ -68,7 +70,7 @@ export function FeedKeyPanel({ apiKey, feedProxy, onSave }: Props) {
   return (
     <div className="feedkey">
       <div className="feedkey-head">
-        <strong>The feed closed its doors</strong>
+        <strong>{isDemo ? "This is a recording" : "The feed closed its doors"}</strong>
         <button
           type="button"
           className="feedkey-close"
@@ -79,12 +81,22 @@ export function FeedKeyPanel({ apiKey, feedProxy, onSave }: Props) {
         </button>
       </div>
 
-      <p className="feedkey-body">
-        Vector read positions from airplanes.live, which was open to browsers
-        and needed no key. In August 2026 that changed, and every other free
-        ADS-B network closed browser access at about the same time. Only the
-        service can allow a browser to call it, so there are two ways back.
-      </p>
+      {isDemo ? (
+        <p className="feedkey-body">
+          You are watching a captured minute of London airspace, replayed. The
+          aircraft, their callsigns and their headings are real; only the clock
+          is. To point Vector at live traffic anywhere on Earth, it needs a
+          feed - the networks that once answered browsers freely closed that
+          door in 2026.
+        </p>
+      ) : (
+        <p className="feedkey-body">
+          Vector read positions from airplanes.live, which was open to browsers
+          and needed no key. In August 2026 that changed, and every other free
+          ADS-B network closed browser access at about the same time. Only the
+          service can allow a browser to call it, so there are two ways back.
+        </p>
+      )}
 
       <div className="feedkey-tabs" role="tablist">
         <button

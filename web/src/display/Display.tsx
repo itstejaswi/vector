@@ -175,12 +175,13 @@ export function Display() {
         onPickFlight={handlePickFlight}
       />
 
-      {/* Only when the feed is actually failing: there is nothing to configure
-          while aircraft are arriving. */}
-      {state.status?.ok === false && (
+      {/* Offered whenever the visitor is not on a live feed: while the demo
+          plays, and if a configured feed later fails. */}
+      {(state.status?.demo || state.status?.ok === false) && (
         <FeedKeyPanel
           apiKey={cfg.apiKey ?? ""}
           feedProxy={cfg.feedProxy ?? ""}
+          isDemo={Boolean(state.status?.demo)}
           onSave={(patch) => conn.patchConfig(patch)}
         />
       )}

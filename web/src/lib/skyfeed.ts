@@ -17,7 +17,8 @@ import {
   mergeConfig,
 } from "@shared/index.js";
 import type { Provider, RawAircraft } from "./providers.js";
-import { selectProvider } from "./providers.js";
+import { demo, isUnconfigured, selectProvider } from "./providers.js";
+import { DEMO_CENTER, demoFrame } from "./demoFeed.js";
 
 const ADSBDB_API = "https://api.adsbdb.com/v0";
 
@@ -332,7 +333,16 @@ function migrateLegacyStorage(): void {
 function loadConfig(): Config {
   try {
     const raw = localStorage.getItem(CONFIG_KEY);
-    if (!raw) return { ...DEFAULT_CONFIG };
+    // A first visit has no feed configured, so it opens on the demo capture.
+    // Centring on Delhi would show an empty sky over the wrong city.
+    if (!raw) {
+      return {
+        ...DEFAULT_CONFIG,
+        centerLat: DEMO_CENTER.lat,
+        centerLon: DEMO_CENTER.lon,
+        locationName: DEMO_CENTER.name,
+      };
+    }
     return mergeConfig(DEFAULT_CONFIG, JSON.parse(raw) as Partial<Config>);
   } catch {
     return { ...DEFAULT_CONFIG };
@@ -374,6 +384,8 @@ export class SkyFeed {
   private flushTimer: ReturnType<typeof setInterval> | null = null;
   /** Guards against overlapping polls when the network is slow. */
   private polling = false;
+  /** When the demo replay began, so its clock is independent of the page's. */
+  private demoStarted = Date.now();
   /** hex -> recent [lon, lat] fixes, oldest first. */
   private trails = new Map<string, [number, number][]>();
   /** Aircraft whose enrichment jumps the request queue, if any. */
@@ -484,6 +496,17 @@ export class SkyFeed {
 
     this.polling = true;
     const now = Date.now();
+
+    // Nothing configured: replay the capture rather than show an empty map.
+    if (isUnconfigured(cfg)) {
+      try {
+        this.ingest(demoFrame((now - this.demoStarted) / 1000), now, demo, true);
+      } finally {
+        this.polling = false;
+      }
+      return;
+    }
+
     const provider = selectProvider(cfg);
     try {
       const res = await fetch(this.apiUrl(cfg), {
@@ -491,33 +514,7 @@ export class SkyFeed {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-      const rawList = provider.parse(await res.json());
-
-      const list: Aircraft[] = [];
-      for (const raw of rawList) {
-        const ac = normalize(raw, now);
-        if (ac) {
-          this.enrich(ac, now);
-          this.recordTrail(ac);
-          list.push(ac);
-        }
-      }
-
-      this.pruneSticky(now);
-      this.pruneTrails(list);
-      this.update({
-        connected: true,
-        now,
-        aircraft: list,
-        // New Map identity so React sees the change.
-        trails: new Map(this.trails),
-        status: {
-          ok: true,
-          count: list.length,
-          lastOk: now,
-          message: provider.label,
-        },
-      });
+      this.ingest(provider.parse(await res.json()), now, provider, false);
     } catch (err) {
       // Keep the last good snapshot on screen; the renderer ages it out.
       this.update({
@@ -532,6 +529,43 @@ export class SkyFeed {
     } finally {
       this.polling = false;
     }
+  }
+
+  /** Normalise, enrich and publish a batch of raw records. */
+  private ingest(
+    rawList: RawAircraft[],
+    now: number,
+    provider: Provider,
+    isDemo: boolean
+  ): void {
+    const list: Aircraft[] = [];
+    for (const raw of rawList) {
+      const ac = normalize(raw, now);
+      if (ac) {
+        // The demo is a capture: asking adsbdb to enrich it would spend a free
+        // service's quota on aircraft that landed long ago.
+        if (!isDemo) this.enrich(ac, now);
+        this.recordTrail(ac);
+        list.push(ac);
+      }
+    }
+
+    this.pruneSticky(now);
+    this.pruneTrails(list);
+    this.update({
+      connected: true,
+      now,
+      aircraft: list,
+      // New Map identity so React sees the change.
+      trails: new Map(this.trails),
+      status: {
+        ok: true,
+        count: list.length,
+        lastOk: now,
+        message: provider.label,
+        demo: isDemo,
+      },
+    });
   }
 
   // --- enrichment ---

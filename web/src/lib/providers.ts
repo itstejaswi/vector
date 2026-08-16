@@ -187,16 +187,36 @@ export const proxy: Provider = {
   },
 };
 
+/**
+ * A replayed capture, used when nothing else is configured.
+ *
+ * Vector needs a key now, and a first-time visitor has none. Rather than show
+ * them an empty map and a paragraph, it shows real traffic - captured, not
+ * invented - moving along its own headings. The HUD labels it DEMO throughout.
+ */
+export const demo: Provider = {
+  id: "demo",
+  label: "DEMO",
+  ready: () => true,
+  maxRadiusNm: 250,
+  // Never fetched: `poll` recognises this provider and calls demoFrame().
+  url: () => "",
+  parse: (json) => json as RawAircraft[],
+};
+
 export const PROVIDERS: Provider[] = [airlabs, proxy, airplanesLive];
 
 /**
  * Pick the provider to poll.
  *
  * A key or a proxy URL means the visitor set one up deliberately, so those win
- * in that order. Without either there is only airplanes.live, which will fail
- * while its block stands - but failing against the original feed reports
- * something truer than failing against a service the visitor never configured.
+ * in that order. airplanes.live follows, in case its block is ever lifted.
  */
 export function selectProvider(cfg: Config): Provider {
   return PROVIDERS.find((p) => p.ready(cfg)) ?? airplanesLive;
+}
+
+/** True when the visitor has configured nothing and should see the demo. */
+export function isUnconfigured(cfg: Config): boolean {
+  return !cfg.apiKey?.trim() && !cfg.feedProxy?.trim();
 }
