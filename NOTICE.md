@@ -40,6 +40,7 @@ Every other icon in the HUD is drawn for this project.
 These are services rather than bundled code, credited in-app as their terms
 require:
 
+- **AirLabs** — live aircraft positions, when a key is configured
 - **adsb.lol** — live aircraft positions, via a shim you host
 - **airplanes.live** — live aircraft positions (see the note below)
 - **adsbdb** — route and airframe lookups
@@ -59,21 +60,23 @@ network closed browser access within roughly the same window.
 | adsb.lol | Serves data, sends no `access-control-allow-origin` |
 | adsb.fi | Serves data, sends no `access-control-allow-origin` |
 | OpenSky | `access-control-allow-origin: https://opensky-network.org` — its own site only |
-| AirLabs | Sends the header, but registration is closed to a waiting list |
+| AirLabs | Sends the header, and issues free keys from a waiting list |
 
 None of that is something a browser can work around. CORS is enforced by the
-browser and only the API's owner can relax it.
+browser and only the API's owner can relax it. There are two ways back:
 
-The data itself is still public: adsb.lol serves it to anyone who asks, just
+**An AirLabs key.** They answer browsers directly. Registration runs from a
+waiting list, and the key goes in the feed panel.
+
+**A shim you host.** adsb.lol still serves the data to anyone who asks, just
 not to a browser. `worker/index.js` is a small Cloudflare Worker that fetches
-from adsb.lol and adds the one header a browser needs — nothing else. Deploy
-your own and give Vector the URL.
+from adsb.lol and adds the one header a browser needs — nothing else.
 
-**No endpoint is bundled with this repository.** That is deliberate: the
-project is public and MIT licensed, so a shipped address would become
-everyone's address, and land whichever service it points at with traffic from
-every fork at once. The same reasoning is why the Worker sends a `user-agent`
-naming this project — a free feed deserves to know who is calling it.
+**Neither is bundled with this repository.** That is deliberate: the project is
+public and MIT licensed, so a shipped key or address would become everyone's,
+and land whichever service it points at with traffic from every fork at once.
+The same reasoning is why the Worker sends a `user-agent` naming this project —
+a free feed deserves to know who is calling it.
 
 Thanks are owed to all of these operators regardless. Running a public ADS-B
 network is expensive and largely thankless, and a hobby project like this one

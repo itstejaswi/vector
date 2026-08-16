@@ -8,18 +8,16 @@
 //   adsb.lol         serves data, sends no access-control-allow-origin
 //   adsb.fi          serves data, sends no access-control-allow-origin
 //   OpenSky          allows only its own origin
-//   AirLabs          sends the header, but registration is closed
+//   AirLabs          sends the header, and issues keys from a waiting list
 //
 // A browser cannot work around any of that: CORS is enforced by the browser
-// and only the API's owner can relax it. So the feed is pluggable, and the
-// working route is now a shim the visitor hosts themselves - see
-// `worker/index.js`, which fetches from adsb.lol and adds the one header a
-// browser needs.
+// and only the API's owner can relax it. So the feed is pluggable, and there
+// are two working routes: an AirLabs key, or a shim the visitor hosts
+// themselves (see `worker/index.js`).
 //
-// Nothing is bundled and no endpoint of ours is shared. This repository is
-// public and permissively licensed, so anything shipped here would become
-// everyone's, and land whichever service it points at with traffic from every
-// fork at once.
+// Nothing is bundled - no key, no endpoint. This repository is public and
+// permissively licensed, so anything shipped here would become everyone's, and
+// land whichever service it points at with traffic from every fork at once.
 
 import type { Config } from "@shared/index.js";
 
@@ -55,6 +53,10 @@ export interface Provider {
   parse(json: unknown): RawAircraft[];
 }
 
+const M_PER_FOOT = 0.3048;
+/** Also the km-per-km/h factor, since a knot is one nautical mile per hour. */
+const KM_PER_NM = 1.852;
+
 /**
  * airplanes.live - the original feed.
  *
@@ -74,6 +76,80 @@ export const airplanesLive: Provider = {
     return body.ac ?? body.aircraft ?? [];
   },
 };
+
+/**
+ * AirLabs - answers browsers directly, no shim required.
+ *
+ * Needs a free key, which the visitor supplies; registration runs from a
+ * waiting list. Its units differ from the ADS-B convention the rest of the app
+ * uses - metres and km/h rather than feet and knots - so both are converted
+ * here rather than leaking outward.
+ */
+export const airlabs: Provider = {
+  id: "airlabs",
+  label: "AirLabs",
+  ready: (cfg) => Boolean(cfg.apiKey?.trim()),
+  maxRadiusNm: 250,
+  url: (cfg, radiusNm) => {
+    const km = Math.round(radiusNm * KM_PER_NM);
+    const key = encodeURIComponent(cfg.apiKey?.trim() ?? "");
+    return (
+      `https://airlabs.co/api/v9/flights?lat=${cfg.centerLat}` +
+      `&lng=${cfg.centerLon}&distance=${km}&api_key=${key}`
+    );
+  },
+  parse: (json) => {
+    const body = json as {
+      response?: AirLabsFlight[];
+      error?: { message?: string };
+    };
+    if (body.error) throw new Error(body.error.message ?? "AirLabs error");
+
+    return (body.response ?? []).map((f) => ({
+      hex: f.hex,
+      flight: f.flight_icao ?? f.flight_iata ?? f.flight_number,
+      lat: f.lat,
+      lon: f.lng,
+      // AirLabs reports altitude in metres; the app works in feet.
+      alt_baro:
+        typeof f.alt === "number" ? Math.round(f.alt / M_PER_FOOT) : undefined,
+      // ...and ground speed in km/h, where the app works in knots.
+      gs: typeof f.speed === "number" ? f.speed / KM_PER_NM : undefined,
+      track: f.dir,
+      // Vertical speed arrives in m/s and is shown as feet per minute.
+      baro_rate:
+        typeof f.v_speed === "number"
+          ? Math.round((f.v_speed / M_PER_FOOT) * 60)
+          : undefined,
+      r: f.reg_number,
+      t: f.aircraft_icao,
+      seen: f.updated
+        ? Math.max(0, Date.now() / 1000 - f.updated)
+        : undefined,
+    }));
+  },
+};
+
+/** The subset of AirLabs' flight record this app consumes. */
+interface AirLabsFlight {
+  hex?: string;
+  reg_number?: string;
+  lat?: number;
+  lng?: number;
+  /** Altitude in metres. */
+  alt?: number;
+  dir?: number;
+  /** Ground speed in km/h. */
+  speed?: number;
+  /** Vertical speed in metres per second. */
+  v_speed?: number;
+  flight_number?: string;
+  flight_icao?: string;
+  flight_iata?: string;
+  aircraft_icao?: string;
+  /** Unix seconds. */
+  updated?: number;
+}
 
 /**
  * A CORS shim you host yourself.
@@ -111,15 +187,15 @@ export const proxy: Provider = {
   },
 };
 
-export const PROVIDERS: Provider[] = [proxy, airplanesLive];
+export const PROVIDERS: Provider[] = [airlabs, proxy, airplanesLive];
 
 /**
  * Pick the provider to poll.
  *
- * A configured proxy means the visitor has set one up deliberately, so it
- * wins. Without one there is only airplanes.live, which will fail while its
- * block stands - but failing against the original feed reports something truer
- * than failing against a service the visitor never configured.
+ * A key or a proxy URL means the visitor set one up deliberately, so those win
+ * in that order. Without either there is only airplanes.live, which will fail
+ * while its block stands - but failing against the original feed reports
+ * something truer than failing against a service the visitor never configured.
  */
 export function selectProvider(cfg: Config): Provider {
   return PROVIDERS.find((p) => p.ready(cfg)) ?? airplanesLive;

@@ -443,6 +443,7 @@ export class SkyFeed {
       patch.centerLat !== undefined ||
       patch.centerLon !== undefined ||
       patch.radiusMiles !== undefined ||
+      patch.apiKey !== undefined ||
       patch.feedProxy !== undefined
     ) {
       // Old tracks belong to the old view; keep them and they'd smear across

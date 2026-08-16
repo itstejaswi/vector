@@ -20,12 +20,19 @@ export interface Config {
   /** Unit for the speed shown on labels. */
   speedUnit: SpeedUnit;
   /**
-   * URL of a CORS shim for the position feed, hosted by the visitor.
+   * Key for the position feed, supplied by the visitor.
    *
    * Empty by default and never bundled. Free ADS-B networks closed browser
-   * access in August 2026; the data is still public, but a browser cannot read
-   * it directly. `worker/index.js` in this repository is a ~100 line Cloudflare
-   * Worker that adds the one header a browser needs.
+   * access in August 2026; AirLabs still answers browsers but wants a key, and
+   * since this repository is public a shipped key would become everyone's key.
+   */
+  apiKey?: string;
+  /**
+   * URL of a CORS shim for the position feed, hosted by the visitor.
+   *
+   * The alternative to a key. adsb.lol still serves the data openly, it simply
+   * does not send the header a browser needs; `worker/index.js` in this
+   * repository is a small Cloudflare Worker that adds it.
    */
   feedProxy?: string;
 }
@@ -40,6 +47,7 @@ export const DEFAULT_CONFIG: Config = {
   altitudeColor: true,
   showAirports: true,
   speedUnit: "kmh",
+  apiKey: "",
   feedProxy: "",
 };
 
@@ -96,6 +104,7 @@ export function sanitizeConfig(cfg: Config): Config {
     locationName:
       typeof cfg.locationName === "string" ? cfg.locationName : "",
     // Trimmed so a stray paste cannot produce a malformed request URL.
+    apiKey: typeof cfg.apiKey === "string" ? cfg.apiKey.trim() : "",
     feedProxy: typeof cfg.feedProxy === "string" ? cfg.feedProxy.trim() : "",
   };
 }

@@ -1871,3 +1871,37 @@ button {
     width: auto;
   }
 }
+
+.feedkey-tabs {
+  display: flex;
+  gap: 4px;
+  margin: 13px 0 12px;
+  padding: 3px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--stroke);
+}
+
+.feedkey-tab {
+  flex: 1 1 0;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--text-3);
+  font-family: var(--sans);
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 160ms var(--ease), background 160ms var(--ease);
+}
+
+.feedkey-tab:hover {
+  color: var(--text-2);
+}
+
+.feedkey-tab[aria-selected="true"] {
+  background: rgba(255, 170, 61, 0.14);
+  color: var(--amber);
+  font-weight: 600;
+}
