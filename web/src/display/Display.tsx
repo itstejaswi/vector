@@ -8,6 +8,7 @@ import { GeoMapLayer } from "./GeoMapLayer.js";
 import { AircraftCanvas } from "./AircraftCanvas.js";
 import { CinematicOverlays } from "./CinematicOverlays.js";
 import { LocationBox } from "./LocationBox.js";
+import { FeedKeyPanel } from "./FeedKeyPanel.js";
 import { useCursorGlow } from "./useCursorGlow.js";
 import type { FlightHit } from "../lib/flights.js";
 
@@ -173,6 +174,15 @@ export function Display() {
         onPick={handlePickLocation}
         onPickFlight={handlePickFlight}
       />
+
+      {/* Only when the feed is actually failing: there is nothing to configure
+          while aircraft are arriving. */}
+      {state.status?.ok === false && (
+        <FeedKeyPanel
+          apiKey={cfg.apiKey ?? ""}
+          onSave={(apiKey) => conn.patchConfig({ apiKey })}
+        />
+      )}
 
       <CinematicOverlays
         locationName={cfg.locationName}
