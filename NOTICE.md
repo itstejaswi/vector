@@ -1,8 +1,13 @@
 # Third-party notices
 
-Vector is MIT licensed. It also carries work from the projects below, each
-used under its own permissive licence. This file records exactly what came
-from where, so the credit is specific rather than a blanket acknowledgement.
+Vector is licensed under the GNU AGPL v3. It also carries work from the
+projects below, each used under its own permissive licence. This file records
+exactly what came from where, so the credit is specific rather than a blanket
+acknowledgement.
+
+Those permissive licences allow redistribution under stronger terms, which is
+what the AGPL is. They do not allow removing the original author's notice, and
+it has not been removed.
 
 ## Code
 
