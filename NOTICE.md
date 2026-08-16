@@ -40,8 +40,36 @@ Every other icon in the HUD is drawn for this project.
 These are services rather than bundled code, credited in-app as their terms
 require:
 
-- **airplanes.live** — live aircraft positions
+- **AirLabs** — live aircraft positions, when a key is configured
+- **airplanes.live** — live aircraft positions (see the note below)
 - **adsbdb** — route and airframe lookups
 - **Nominatim** / OpenStreetMap contributors — place-name geocoding
 - **CARTO** and OpenStreetMap contributors — basemap tiles
 - **OurAirports** (CC0) — airport coordinates
+
+### A note on the position feed
+
+Vector was built on airplanes.live, whose API was open to browsers and needed
+no key. In August 2026 that changed, and not only there: every free ADS-B
+network closed browser access within roughly the same window.
+
+| Service | What it does now |
+| ------- | ---------------- |
+| airplanes.live | 403 to every request, browser or not |
+| adsb.lol | Serves data, sends no `access-control-allow-origin` |
+| adsb.fi | Serves data, sends no `access-control-allow-origin` |
+| OpenSky | `access-control-allow-origin: https://opensky-network.org` — its own site only |
+
+None of that is something a browser can work around. CORS is enforced by the
+browser and only the API's owner can relax it.
+
+AirLabs still answers browsers and is used when a key is supplied. **No key is
+bundled with this repository**, and that is deliberate: the project is public
+and MIT licensed, so a shipped key would become everyone's key and land the
+provider with traffic from every fork at once. Bring your own from
+[airlabs.co](https://airlabs.co) and enter it in settings.
+
+Thanks are owed to all of these operators regardless. Running a public ADS-B
+network is expensive and largely thankless, and a hobby project like this one
+exists entirely on their generosity.
+

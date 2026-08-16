@@ -19,6 +19,14 @@ export interface Config {
   showAirports: boolean;
   /** Unit for the speed shown on labels. */
   speedUnit: SpeedUnit;
+  /**
+   * Key for the position feed, supplied by the visitor.
+   *
+   * Empty by default and never bundled. Free ADS-B networks closed browser
+   * access in August 2026; the one that still answers needs a key, and since
+   * this repository is public a shipped key would become everyone's key.
+   */
+  apiKey?: string;
 }
 
 export const DEFAULT_CONFIG: Config = {
@@ -31,6 +39,7 @@ export const DEFAULT_CONFIG: Config = {
   altitudeColor: true,
   showAirports: true,
   speedUnit: "kmh",
+  apiKey: "",
 };
 
 // --- guard rails -----------------------------------------------------------
@@ -85,6 +94,8 @@ export function sanitizeConfig(cfg: Config): Config {
       : DEFAULT_CONFIG.radiusMiles,
     locationName:
       typeof cfg.locationName === "string" ? cfg.locationName : "",
+    // Trimmed so a stray paste cannot produce a malformed request URL.
+    apiKey: typeof cfg.apiKey === "string" ? cfg.apiKey.trim() : "",
   };
 }
 

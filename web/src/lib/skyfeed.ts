@@ -1,7 +1,10 @@
-// Browser-side flight feed. Replaces the old Node server entirely: polls
-// airplanes.live directly, enriches from adsbdb, and keeps config in
-// localStorage. Every upstream sends `access-control-allow-origin: *`, so the
-// browser can talk to them without a proxy.
+// Browser-side flight feed. Replaces the old Node server entirely: polls a
+// position provider directly, enriches from adsbdb, and keeps config in
+// localStorage.
+//
+// Which provider it polls is no longer fixed. Every free ADS-B network closed
+// browser access in August 2026, so the feed is pluggable and the choice lives
+// in providers.ts.
 //
 // The public surface is deliberately identical to the old WebSocket
 // `Connection` class, so `useStream` and every consumer work unchanged.
@@ -13,8 +16,9 @@ import {
   greatCircleKm,
   mergeConfig,
 } from "@shared/index.js";
+import type { Provider, RawAircraft } from "./providers.js";
+import { selectProvider } from "./providers.js";
 
-const AIRCRAFT_API = "https://api.airplanes.live/v2/point";
 const ADSBDB_API = "https://api.adsbdb.com/v0";
 
 const CONFIG_KEY = "vector.config";
@@ -39,8 +43,6 @@ const LEGACY_KEYS: Record<string, string> = {
 
 const POLL_MS = 3000;
 const NM_PER_MILE = 0.868976;
-/** airplanes.live caps the point query at 250 nm. */
-const MAX_RADIUS_NM = 250;
 /**
  * How long enrichment stays cached.
  *
@@ -110,41 +112,30 @@ type Listener = (state: StreamState) => void;
  * distinction matters: one is the visitor's connection, the other is the feed
  * provider declining browser traffic and nothing the visitor can fix.
  */
-function describeFeedError(err: unknown): string {
+function describeFeedError(err: unknown, provider: Provider): string {
   if (!navigator.onLine) return "offline";
 
   const message = err instanceof Error ? err.message : "";
 
   if (err instanceof DOMException && err.name === "TimeoutError") {
-    return "feed timed out";
+    return `${provider.label} timed out`;
   }
   if (/Failed to fetch|NetworkError|Load failed/i.test(message)) {
-    return "feed unreachable - the provider is refusing browser requests";
+    // The likely cause, and the only one the visitor can do anything about.
+    return provider.id === "airplanes.live"
+      ? "airplanes.live is refusing browser requests - add an AirLabs key in settings"
+      : `${provider.label} is unreachable`;
+  }
+  if (/api_key|apikey/i.test(message)) {
+    return "that key was not accepted";
   }
   if (/^HTTP 4\d\d$/.test(message)) {
-    return `feed refused the request (${message})`;
+    return `${provider.label} refused the request (${message})`;
   }
   if (/^HTTP 5\d\d$/.test(message)) {
-    return `feed is having trouble (${message})`;
+    return `${provider.label} is having trouble (${message})`;
   }
   return message || "feed unavailable";
-}
-
-/** Raw aircraft record from airplanes.live (the subset we consume). */
-interface RawAircraft {
-  hex?: string;
-  flight?: string;
-  lat?: number;
-  lon?: number;
-  alt_baro?: number | "ground";
-  alt_geom?: number;
-  gs?: number;
-  track?: number;
-  baro_rate?: number;
-  category?: string;
-  r?: string;
-  t?: string;
-  seen?: number;
 }
 
 interface RouteInfo {
@@ -449,11 +440,13 @@ export class SkyFeed {
       // storage full or blocked (private mode) — run from memory instead
     }
     // Re-centring or re-scoping changes the query window: refresh immediately
-    // rather than showing the old area until the next tick.
+    // rather than showing the old area until the next tick. A new key changes
+    // the provider outright, so that refreshes too.
     if (
       patch.centerLat !== undefined ||
       patch.centerLon !== undefined ||
-      patch.radiusMiles !== undefined
+      patch.radiusMiles !== undefined ||
+      patch.apiKey !== undefined
     ) {
       // Old tracks belong to the old view; keep them and they'd smear across
       // the map as unrelated streaks.
@@ -478,11 +471,12 @@ export class SkyFeed {
   // --- polling ---
 
   private apiUrl(cfg: Config): string {
-    // Two limits apply: our own 200 km guard rail, and airplanes.live's
-    // hard 250 nm ceiling. Honour whichever bites first.
+    const provider = selectProvider(cfg);
+    // Two limits apply: our own 200 km guard rail, and the provider's own
+    // ceiling. Honour whichever bites first.
     const miles = Math.min(cfg.radiusMiles, MAX_RADIUS_MILES);
-    const r = Math.min(MAX_RADIUS_NM, Math.ceil(miles * NM_PER_MILE) + 1);
-    return `${AIRCRAFT_API}/${cfg.centerLat}/${cfg.centerLon}/${r}`;
+    const r = Math.min(provider.maxRadiusNm, Math.ceil(miles * NM_PER_MILE) + 1);
+    return provider.url(cfg, r);
   }
 
   private async poll(): Promise<void> {
@@ -492,14 +486,14 @@ export class SkyFeed {
 
     this.polling = true;
     const now = Date.now();
+    const provider = selectProvider(cfg);
     try {
       const res = await fetch(this.apiUrl(cfg), {
         signal: AbortSignal.timeout(9000),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-      const json = (await res.json()) as { ac?: RawAircraft[]; aircraft?: RawAircraft[] };
-      const rawList = json.ac ?? json.aircraft ?? [];
+      const rawList = provider.parse(await res.json());
 
       const list: Aircraft[] = [];
       for (const raw of rawList) {
@@ -523,7 +517,7 @@ export class SkyFeed {
           ok: true,
           count: list.length,
           lastOk: now,
-          message: "airplanes.live",
+          message: provider.label,
         },
       });
     } catch (err) {
@@ -534,7 +528,7 @@ export class SkyFeed {
           ok: false,
           count: this.state.aircraft.length,
           lastOk: this.state.status?.lastOk ?? null,
-          message: describeFeedError(err),
+          message: describeFeedError(err, provider),
         },
       });
     } finally {
