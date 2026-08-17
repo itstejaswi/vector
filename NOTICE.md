@@ -1,4 +1,4 @@
-# Third-party notices
+﻿# Third-party notices
 
 Vector is licensed under the GNU AGPL v3. It also carries work from the
 projects below, each used under its own permissive licence. This file records
